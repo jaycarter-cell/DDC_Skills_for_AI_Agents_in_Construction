@@ -1,143 +1,309 @@
 [
   {
-    "severity": "critical",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/pdf-construction/SKILL.md",
-    "title": "Path traversal via unsanitized PDF-extracted text used in output filename construction",
-    "description": "The `split_drawing_package` function extracts text from PDF pages using `page.extract_text()`, then uses a regex to find a sheet name pattern within the first 500 characters. This extracted value is used directly in constructing the output file path (`output_dir / f\"{sheet_name}.pdf\"`) without any sanitization or path-component validation. An attacker who controls the content of a PDF (e.g., a malicious submittal or drawing package) can embed path traversal sequences like `../../etc/cron.d/backdoor` in the text layer, causing the function to write files to arbitrary locations outside the intended output directory.",
-    "impact": "Arbitrary file write anywhere on the filesystem accessible to the process. An attacker can overwrite critical system files, inject cron jobs for persistent code execution, or overwrite application configuration files to escalate privileges.",
-    "attack_path": [
-      "1. Attacker crafts a malicious PDF where the first 500 characters of a page's text layer contain a string matching the regex `[A-Z]+[-]?\\d+` that includes path traversal, e.g., embedding text 'A../../tmp/evil1' so the regex captures 'A-../../tmp/evil1' or using a carefully placed match like '../../../etc/cron.d/TASK1'",
-      "2. Attacker submits this PDF as a 'drawing package' through the construction document workflow (e.g., via submittal or RFI upload)",
-      "3. The `split_drawing_package` function is invoked on the malicious PDF",
-      "4. The regex `re.search(r'([A-Z]+[-]?\\d+)', text[:500])` extracts the attacker-controlled sheet_name",
-      "5. The file is written to `output_dir / f\"{sheet_name}.pdf\"` which resolves to a path outside output_dir",
-      "6. Attacker achieves arbitrary file write, potentially overwriting system files or planting malicious content"
-    ],
-    "evidence": [
-      "pdf-construction/SKILL.md:132 - sheet_match = re.search(r'([A-Z]+[-]?\\d+)', text[:500])",
-      "pdf-construction/SKILL.md:133 - sheet_name = sheet_match.group(1) if sheet_match else f\"Page_{i+1:03d}\"",
-      "pdf-construction/SKILL.md:138 - output_file = output_dir / f\"{sheet_name}.pdf\""
-    ],
-    "remediation": "Sanitize the extracted sheet_name by stripping or rejecting path separators and special characters. Use `os.path.basename()` on the extracted name, validate it contains only alphanumeric characters and hyphens, and verify the resolved output path is still within the intended output_dir using `os.path.commonpath()` or `Path.resolve().is_relative_to()`."
-  },
-  {
+    "id": "VULN-001",
     "severity": "high",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/docx-construction/SKILL.md",
-    "title": "Arbitrary file read via unvalidated photo path in daily report generation",
-    "description": "The `generate_daily_report` function iterates over `report_data['photos']` and calls `doc.add_picture(photo['path'], width=Inches(5))` where `photo['path']` is entirely user-controlled. The python-docx library will read and embed the file at the specified path into the generated document. There is no validation that the path points to an actual image or is within an allowed directory. An attacker who can influence the report_data (e.g., through a daily report form, API input, or data injection) can read arbitrary files from the server filesystem and exfiltrate them embedded in the generated DOCX.",
-    "impact": "Arbitrary file read from the server filesystem. Sensitive files such as configuration files containing credentials, private keys, database connection strings, or other project documents can be exfiltrated by embedding them in the generated Word document that is then downloaded by the attacker.",
+    "location": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/cad-to-data/SKILL.md",
+    "title": "Path traversal in export_to_json allows arbitrary file write to any location on disk",
+    "description": "The CADDataConverter.export_to_json() method writes extraction results to an output_path supplied by the caller with no path validation or sanitization. An attacker who controls the output_path parameter can write arbitrary JSON content to any location writable by the process, including overwriting configuration files, cron jobs, or SSH authorized_keys.",
+    "impact": "Arbitrary file write leading to potential remote code execution. An attacker can overwrite sensitive system files (e.g., ~/.bashrc, cron entries, web server configs) or plant webshells in document roots.",
     "attack_path": [
-      "1. Attacker submits a daily report with photo entries containing paths to sensitive files, e.g., photo['path'] = '/etc/shadow' or '/app/config/database.yml'",
-      "2. The generate_daily_report function processes the report_data without path validation",
-      "3. doc.add_picture() attempts to read the file at the attacker-specified path",
-      "4. If the file is a valid image format or the library reads it partially, the file content is embedded in the DOCX",
-      "5. Even if it fails with an error, the error message may leak file existence or partial content information",
-      "6. The generated DOCX is returned to the attacker containing the exfiltrated file content"
+      "1. Attacker provides a crafted output_path such as '../../../../etc/cron.d/backdoor' or '../../../var/www/html/shell.php'",
+      "2. The export_to_json() method at line 542-551 calls open(output_path, 'w') without any path validation",
+      "3. json.dump(output, f, indent=2) writes attacker-influenced content to the arbitrary path",
+      "4. If written to a cron directory or web-accessible location, attacker gains code execution"
     ],
     "evidence": [
-      "docx-construction/SKILL.md:166 - if report_data.get('photos'):",
-      "docx-construction/SKILL.md:168 - doc.add_picture(photo['path'], width=Inches(5))"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/cad-to-data/SKILL.md",
+        "line_number": 542,
+        "snippet": "def export_to_json(self, result: CADExtractionResult, output_path: str):"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/cad-to-data/SKILL.md",
+        "line_number": 550,
+        "snippet": "with open(output_path, 'w') as f:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/cad-to-data/SKILL.md",
+        "line_number": 551,
+        "snippet": "json.dump(output, f, indent=2)"
+      }
     ],
-    "remediation": "Validate that photo['path'] resolves to a location within an allowed uploads/media directory. Use an allowlist of permitted base directories, resolve symlinks with `os.path.realpath()`, verify the resolved path starts with the allowed prefix, and validate the file has a legitimate image extension and valid image magic bytes before passing it to add_picture()."
+    "remediation": "Validate and sanitize output_path before writing: resolve the real path with os.path.realpath(), ensure it falls within an allowed output directory using os.path.commonpath(), reject paths containing '..' components, and enforce an allowlist of permitted output directories."
   },
   {
+    "id": "VULN-002",
     "severity": "high",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/pptx-construction/SKILL.md",
-    "title": "Arbitrary file read via unvalidated photo path in PowerPoint presentation generation",
-    "description": "The `add_photos_slide` function in the PPTX construction skill calls `slide.shapes.add_picture(photo['path'], left, top, width=Inches(5.5))` where `photo['path']` comes directly from user-supplied project data. No path validation, allowlisting, or sandboxing is performed. This allows an attacker who can supply photo references in project data to read arbitrary files from the server's filesystem.",
-    "impact": "Arbitrary file read from the server filesystem. Sensitive configuration files, credentials, private keys, or application source code can be exfiltrated by embedding them in the generated PPTX that is subsequently accessible to the attacker.",
+    "location": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+    "title": "Path traversal via crafted PDF filename in batch_extract_tables enables arbitrary file write",
+    "description": "The batch_extract_tables() function constructs output filenames from the PDF file's stem name (pdf_path.stem) without sanitization and writes to a user-controlled output_folder. A PDF file named '../../etc/cron.d/evil.pdf' would produce an output path like '<output_folder>/../../etc/cron.d/evil_p1_t1.xlsx', escaping the intended output directory. Additionally, both folder_path and output_folder parameters accept arbitrary paths with no validation.",
+    "impact": "Arbitrary file write to locations outside the intended output directory. An attacker who can place a maliciously-named PDF in the input folder (or control folder_path) can write Excel files to arbitrary filesystem locations, potentially overwriting critical files.",
     "attack_path": [
-      "1. Attacker provides project_data['photos'] containing entries like {'path': '/etc/passwd'} or {'path': '/app/.env'}",
-      "2. The create_progress_presentation function calls add_photos_slide with the attacker-controlled data",
-      "3. slide.shapes.add_picture() reads the file at the attacker-specified path without restriction",
-      "4. File content is embedded in the generated PPTX presentation",
-      "5. Attacker downloads or receives the generated presentation containing the exfiltrated data"
+      "1. Attacker places a PDF with a traversal name like '../../tmp/evil.pdf' in the input folder, or controls folder_path to read from an arbitrary directory",
+      "2. batch_extract_tables() at line 347 globs *.pdf files and iterates them",
+      "3. At line 361, output_name is constructed as f\"{pdf_path.stem}_p{page_num+1}_t{table_num+1}.xlsx\" using the unsanitized stem",
+      "4. At line 362, the file is written to Path(output_folder) / output_name, which resolves the traversal components",
+      "5. Extracted data is written to an attacker-controlled filesystem location"
     ],
     "evidence": [
-      "pptx-construction/SKILL.md:170 - for i, photo in enumerate(photos[:4]):",
-      "pptx-construction/SKILL.md:172 - slide.shapes.add_picture(photo['path'], left, top, width=Inches(5.5))"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 342,
+        "snippet": "def batch_extract_tables(folder_path, output_folder):"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 361,
+        "snippet": "output_name = f\"{pdf_path.stem}_p{page_num+1}_t{table_num+1}.xlsx\""
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 362,
+        "snippet": "df.to_excel(Path(output_folder) / output_name, index=False)"
+      }
     ],
-    "remediation": "Implement path validation to ensure photo paths are within an allowed media directory. Resolve the path, verify it is relative to a designated uploads folder, validate image format through magic byte checking, and reject any paths containing traversal sequences or pointing outside the allowed directory tree."
+    "remediation": "Sanitize the PDF filename stem by stripping or rejecting path separator characters and '..' components. Use os.path.basename() on the stem, validate output_folder resolves within an allowed directory, and verify the final resolved output path stays within the output_folder boundary."
   },
   {
+    "id": "VULN-003",
     "severity": "high",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/docx-construction/SKILL.md",
-    "title": "Arbitrary file write via unvalidated output_path in contract/report generation functions",
-    "description": "Multiple document generation functions (`generate_subcontract`, `generate_daily_report`) accept an `output_path` parameter directly from caller input and write files to that location using `doc.save(output_path)` without any validation. An attacker who controls this parameter can write .docx files to arbitrary filesystem locations, potentially overwriting critical files or placing content in executable directories.",
-    "impact": "Arbitrary file write to any location writable by the application process. An attacker could overwrite configuration files, cron jobs, web-accessible directories (for webshell deployment), or application code. While the content is DOCX-formatted, overwriting certain files could cause denial of service or, in combination with other techniques, code execution.",
+    "location": "/workspace/2_DDC_Book/2.3-Pandas-LLM-Analysis/llm-data-automation/SKILL.md",
+    "title": "Piped curl-to-shell installation command enables remote code execution via MITM or DNS hijack",
+    "description": "The SKILL.md instructs users to install Ollama by piping curl output directly to a shell: 'curl -fsSL https://ollama.com/install.sh | sh'. This is a well-known insecure pattern. If an attacker can perform a man-in-the-middle attack, compromise DNS resolution, or if the remote server is compromised, arbitrary shell commands will be executed with the user's privileges without any integrity verification.",
+    "impact": "Remote code execution with the privileges of the user running the command. A compromised download yields full system compromise since the script is executed immediately without signature verification or checksum validation.",
     "attack_path": [
-      "1. Attacker provides output_path as a path outside the intended document directory, e.g., '/var/www/html/shell.docx' or '/app/templates/base.docx'",
-      "2. The generate_subcontract or generate_daily_report function is called with this path",
-      "3. doc.save(output_path) writes the document to the attacker-specified location",
-      "4. If targeting a web-accessible directory, the file becomes downloadable; if targeting template files, it corrupts the application",
-      "5. Attacker achieves arbitrary file write, enabling further exploitation"
+      "1. User follows the installation instructions at line 224",
+      "2. curl fetches https://ollama.com/install.sh - if TLS is downgraded, DNS is poisoned, or the server is compromised, a malicious script is served",
+      "3. The -s flag suppresses curl errors, -f still passes content to sh on certain failure modes",
+      "4. sh executes whatever is downloaded, running arbitrary commands with user privileges",
+      "5. Attacker achieves code execution, can install backdoors, steal credentials, or pivot"
     ],
     "evidence": [
-      "docx-construction/SKILL.md:25 - def generate_subcontract(template_path: str, contract_data: dict, output_path: str) -> str:",
-      "docx-construction/SKILL.md:54 - doc.save(output_path)",
-      "docx-construction/SKILL.md:119 - def generate_daily_report(report_data: dict, output_path: str) -> str:",
-      "docx-construction/SKILL.md:171 - doc.save(output_path)"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.3-Pandas-LLM-Analysis/llm-data-automation/SKILL.md",
+        "line_number": 224,
+        "snippet": "curl -fsSL https://ollama.com/install.sh | sh"
+      }
     ],
-    "remediation": "Validate output_path against an allowlist of permitted output directories. Resolve the path, ensure it is within a designated output folder (e.g., 'contracts/', 'reports/'), reject paths containing '..' traversal sequences, and use os.path.commonpath() to verify the resolved destination is within bounds."
+    "remediation": "Download the script first, verify its checksum/signature, review its contents, then execute: 'curl -fsSL https://ollama.com/install.sh -o install.sh && sha256sum install.sh && sh install.sh'. Alternatively, use the platform's package manager or provide a verified binary download with checksum."
   },
   {
+    "id": "VULN-004",
     "severity": "high",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/docx-construction/SKILL.md",
-    "title": "Arbitrary file read via unvalidated template_path in contract generation",
-    "description": "The `generate_subcontract` function accepts a `template_path` parameter and opens it directly with `Document(template_path)` (python-docx). There is no validation that the path is within an allowed templates directory. An attacker who can control this parameter can read any .docx file on the filesystem, potentially accessing confidential contracts, proposals, or other sensitive documents belonging to other users or projects.",
-    "impact": "Unauthorized access to arbitrary .docx files on the server filesystem. An attacker could read confidential contracts, legal documents, financial proposals, or internal communications stored as Word documents anywhere on the system. The content is then processed through the template replacement logic and written to the output path, making it retrievable.",
+    "location": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/drawing-analyzer/SKILL.md",
+    "title": "Arbitrary file read via unsanitized PDF path in analyze_pdf_drawing allows reading sensitive files",
+    "description": "The DrawingAnalyzer.analyze_pdf_drawing() method opens a PDF file from a user-supplied path with no validation. If this function is exposed through an API or web interface, an attacker can supply paths like '/etc/passwd', '/proc/self/environ', or application configuration files to exfiltrate sensitive data through the extracted text and metadata returned in DrawingAnalysisResult.",
+    "impact": "Arbitrary file read leading to information disclosure. An attacker can read application secrets, configuration files, environment variables, and other sensitive data from the server filesystem.",
     "attack_path": [
-      "1. Attacker provides template_path pointing to a sensitive document, e.g., '/app/data/other_client/confidential_contract.docx'",
-      "2. The generate_subcontract function opens this file with Document(template_path)",
-      "3. The function processes the document content (performing placeholder replacement which is benign if placeholders aren't found)",
-      "4. The document is saved to output_path, which may be attacker-accessible",
-      "5. Attacker retrieves the output file containing the content of the sensitive document"
+      "1. Attacker provides a crafted pdf_path such as '/etc/shadow', '../../../app/config/database.yml', or '/proc/self/environ'",
+      "2. analyze_pdf_drawing() at line 108 passes the unsanitized path to Path(pdf_path)",
+      "3. At line 118, pdfplumber.open(pdf_path) attempts to open the file",
+      "4. If the file is a valid PDF or if pdfplumber's error contains file content hints, data is extracted",
+      "5. Text content is returned in DrawingAnalysisResult.title_block, dimensions, and annotations fields"
     ],
     "evidence": [
-      "docx-construction/SKILL.md:25 - def generate_subcontract(template_path: str, contract_data: dict, output_path: str) -> str:",
-      "docx-construction/SKILL.md:27 - doc = Document(template_path)"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/drawing-analyzer/SKILL.md",
+        "line_number": 108,
+        "snippet": "def analyze_pdf_drawing(self, pdf_path: str) -> DrawingAnalysisResult:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/drawing-analyzer/SKILL.md",
+        "line_number": 118,
+        "snippet": "with pdfplumber.open(pdf_path) as pdf:"
+      }
     ],
-    "remediation": "Restrict template_path to a designated templates directory. Validate the resolved path is within the allowed templates folder, use an allowlist of permitted template filenames, or reference templates by name/ID rather than arbitrary filesystem paths."
+    "remediation": "Validate that pdf_path resolves to a location within an allowed directory. Use os.path.realpath() to resolve symlinks, then check that the resolved path starts with the configured allowed base directory. Reject absolute paths and paths containing '..' components."
   },
   {
+    "id": "VULN-005",
+    "severity": "high",
+    "location": "/workspace/5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+    "title": "Arbitrary file read via unsanitized image paths in analyze_image and compare_to_bim",
+    "description": "ConstructionProgressAnalyzer.analyze_image() opens arbitrary files via Image.open(image_path) with no path validation. Similarly, compare_to_bim() opens two user-controlled file paths using cv2.imread(). An attacker controlling these paths can read arbitrary files from the filesystem. Even if the file is not a valid image, error messages or partial reads may leak file contents or confirm file existence.",
+    "impact": "Arbitrary file read and file existence oracle. An attacker can probe the filesystem structure and read files accessible to the process, potentially exfiltrating secrets, source code, or configuration.",
+    "attack_path": [
+      "1. Attacker supplies image_path as '/etc/passwd' or '/app/.env' to analyze_image()",
+      "2. At line 119, Image.open(image_path) attempts to open and read the file",
+      "3. For compare_to_bim(), at lines 281-282, cv2.imread() reads two arbitrary paths",
+      "4. Even on failure, exception messages reveal whether files exist and may leak partial content",
+      "5. If the file happens to be parseable as an image format, pixel data may encode file contents"
+    ],
+    "evidence": [
+      {
+        "file_path": "/workspace/5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+        "line_number": 119,
+        "snippet": "img = Image.open(image_path).convert('RGB')"
+      },
+      {
+        "file_path": "/workspace/5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+        "line_number": 281,
+        "snippet": "site_img = cv2.imread(image_path)"
+      },
+      {
+        "file_path": "/workspace/5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+        "line_number": 282,
+        "snippet": "bim_img = cv2.imread(bim_render_path)"
+      }
+    ],
+    "remediation": "Validate file paths against an allowlist of permitted directories. Use os.path.realpath() to resolve the path, then verify it falls within the expected uploads or data directory. Reject paths with '..' components, and ensure only expected image file extensions are accepted."
+  },
+  {
+    "id": "VULN-006",
+    "severity": "high",
+    "location": "/workspace/2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-builder/SKILL.md",
+    "title": "Arbitrary file write via unsanitized output paths in export_model and export_to_excel",
+    "description": "MLModelBuilder.export_model() writes model JSON data to a user-controlled output_path using open(output_path, 'w') with no path validation. Similarly, export_to_excel() writes to a user-controlled output_path. An attacker who controls these parameters can write files to arbitrary locations on the filesystem, potentially overwriting critical configuration files or planting malicious content.",
+    "impact": "Arbitrary file write that can overwrite application configuration, inject code into startup scripts, or plant files in web-accessible directories for further exploitation.",
+    "attack_path": [
+      "1. Attacker calls export_model() with output_path set to '../../../../root/.ssh/authorized_keys' or similar sensitive path",
+      "2. At line 401, open(output_path, 'w') opens the file for writing without any path validation",
+      "3. At line 402, json.dump() writes model data (which includes attacker-influenced field values from training data) to the file",
+      "4. The target file is overwritten or created with attacker-influenced content",
+      "5. For export_to_excel() at line 409, pd.ExcelWriter(output_path) similarly writes to an arbitrary path"
+    ],
+    "evidence": [
+      {
+        "file_path": "/workspace/2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-builder/SKILL.md",
+        "line_number": 365,
+        "snippet": "def export_model(self, model_id: str, output_path: str) -> str:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-builder/SKILL.md",
+        "line_number": 401,
+        "snippet": "with open(output_path, 'w') as f:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-builder/SKILL.md",
+        "line_number": 402,
+        "snippet": "json.dump(export_data, f, indent=2)"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-builder/SKILL.md",
+        "line_number": 409,
+        "snippet": "with pd.ExcelWriter(output_path, engine='openpyxl') as writer:"
+      }
+    ],
+    "remediation": "Validate output_path by resolving it with os.path.realpath() and confirming it resides within an expected output directory. Reject any path containing '..' traversal sequences. Use a dedicated output directory with restricted permissions."
+  },
+  {
+    "id": "VULN-007",
     "severity": "medium",
-    "location": "/workspace/5_DDC_Innovative/as-built-documentation/SKILL.md",
-    "title": "File existence oracle and path traversal via unvalidated file_path in document upload",
-    "description": "The `upload_document` method in DocumentManager calls `os.path.getsize(file_path)` and `os.path.splitext(file_path)` where `file_path` is user-supplied. While os.path.getsize only returns size information, it confirms file existence and can be used as an oracle to probe the filesystem for sensitive files. Combined with the fact that the file_path is stored in the document record, this creates information disclosure and tracking of arbitrary paths.",
-    "impact": "File existence oracle allowing an attacker to probe the filesystem structure and discover sensitive files. The attacker can determine which configuration files, credentials files, or other sensitive resources exist on the server by observing whether the function succeeds or returns 0 for file_size_mb.",
+    "location": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+    "title": "API key leaked in URL query parameters, exposable in server logs, proxies, and browser history",
+    "description": "The OpenPriceAPI class sends the FRED API key as a URL query parameter (params['api_key']) rather than in an HTTP header. URL query parameters are routinely logged by web servers, proxies, CDNs, and browser history. This exposes the API key to any system that logs or caches request URLs.",
+    "impact": "API key disclosure leading to unauthorized API usage, quota exhaustion, and potential cost to the key owner. If the same key is reused across services, lateral access to other APIs becomes possible.",
     "attack_path": [
-      "1. Attacker calls upload_document with file_path set to various sensitive paths like '/etc/shadow', '/app/.env', '/root/.ssh/id_rsa'",
-      "2. os.path.getsize(file_path) either returns the file size (file exists) or the exists check returns false (file_size = 0)",
-      "3. The difference in file_size_mb in the returned ProjectDocument reveals file existence",
-      "4. Attacker iterates through sensitive paths to map the filesystem",
-      "5. Discovered files can then be targeted via other vulnerabilities (e.g., the photo path read in docx/pptx generation)"
+      "1. Application calls get_fred_prices() which constructs request with api_key in URL params at line 100",
+      "2. requests.get() sends the request to FRED API with the key visible in the URL query string",
+      "3. Intermediate proxies, load balancers, WAFs, or logging systems record the full URL including the API key",
+      "4. An attacker with access to log files, proxy caches, or network captures extracts the API key",
+      "5. Attacker uses the stolen key to make unauthorized API calls or exhaust rate limits"
     ],
     "evidence": [
-      "as-built-documentation/SKILL.md:226 - def upload_document(self, doc_type: DocumentType, system: BuildingSystem, title: str, file_path: str, ...)",
-      "as-built-documentation/SKILL.md:233 - file_size = os.path.getsize(file_path) / (1024 * 1024) if os.path.exists(file_path) else 0",
-      "as-built-documentation/SKILL.md:234 - file_format = os.path.splitext(file_path)[1].upper().replace('.', '')"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+        "line_number": 99,
+        "snippet": "if self.fred_api_key:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+        "line_number": 100,
+        "snippet": "params['api_key'] = self.fred_api_key"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+        "line_number": 103,
+        "snippet": "response = requests.get(self.FRED_BASE, params=params)"
+      }
     ],
-    "remediation": "Validate that file_path is within an allowed uploads directory before calling os.path.getsize(). Implement path allowlisting, ensure the resolved path doesn't escape the designated upload area, and consider using file IDs rather than raw filesystem paths in the API."
+    "remediation": "Note: The FRED API specifically requires the key as a query parameter, so this is partly an upstream API design issue. Mitigate by: using environment variables to store the key (never hardcoding), ensuring logging infrastructure redacts query parameters containing 'api_key', using HTTPS exclusively, and rotating keys regularly. Document the exposure risk for users."
   },
   {
-    "severity": "medium",
-    "location": "/workspace/4_DDC_Curated/Document-Generation/pdf-construction/SKILL.md",
-    "title": "Arbitrary file write via unvalidated output directory in submittal package creation",
-    "description": "The `create_submittal_package` function accepts an `output_path` parameter and writes a PDF to it with `open(output_path, 'wb')`. Additionally, it reads files from user-supplied paths in the `product_data` and `shop_drawings` lists via `writer.append(pdf)` and `PdfReader(pdf)`. No path validation is performed on any of these parameters, enabling both arbitrary file read (via input PDFs) and arbitrary file write (via output_path).",
-    "impact": "Combined arbitrary file read and write. An attacker can read arbitrary PDF files from the filesystem by specifying them in product_data/shop_drawings lists, and can write the merged output to any writable location via output_path. This enables exfiltration of confidential PDF documents from other projects/users and writing to sensitive locations.",
+    "id": "VULN-008",
+    "severity": "high",
+    "location": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+    "title": "Multiple functions accept unsanitized file paths enabling arbitrary file read from the filesystem",
+    "description": "Several functions in the pdf-to-structured skill accept user-controlled file paths that are passed directly to pdfplumber.open() and file write operations without any path validation: extract_tables_from_pdf(pdf_path), extract_text_with_layout(pdf_path), extract_table_from_area(pdf_path, ...), ocr_scanned_pdf(pdf_path), and parse_specification_pdf(pdf_path). Additionally, extract_text_with_layout() writes extracted content to a hardcoded text file, and export_to_multiple_formats() writes to user-controlled base_name paths.",
+    "impact": "Arbitrary file read from the filesystem when any of these functions are exposed through a web interface or API. An attacker can read any PDF-parseable file, and through the export functions, write extracted content to arbitrary locations.",
     "attack_path": [
-      "1. Attacker provides product_data list containing paths to confidential PDFs belonging to other projects, e.g., ['/app/data/other_client/financials.pdf']",
-      "2. Attacker sets output_path to a web-accessible or attacker-retrievable location",
-      "3. create_submittal_package reads all specified PDFs and merges them into one document",
-      "4. The merged document (containing the confidential content) is written to the attacker-controlled output_path",
-      "5. Attacker retrieves the output file containing exfiltrated content from other projects"
+      "1. Attacker supplies a crafted pdf_path containing path traversal sequences like '../../../sensitive/data.pdf'",
+      "2. Functions at lines 62, 91, 115, 147, 304 pass the path directly to pdfplumber.open()",
+      "3. pdfplumber reads the file and extracts text/tables from it",
+      "4. Extracted content is returned to the caller, exposing sensitive document contents",
+      "5. export_to_multiple_formats() at line 417 writes to user-controlled base_name enabling arbitrary file write"
     ],
     "evidence": [
-      "pdf-construction/SKILL.md:50 - def create_submittal_package(cover_sheet: str, product_data: list, shop_drawings: list, output_path: str) -> str:",
-      "pdf-construction/SKILL.md:60 - writer.append(cover_sheet)",
-      "pdf-construction/SKILL.md:68 - writer.append(pdf)",
-      "pdf-construction/SKILL.md:77 - with open(output_path, \"wb\") as output:"
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 62,
+        "snippet": "def extract_tables_from_pdf(pdf_path):"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 66,
+        "snippet": "with pdfplumber.open(pdf_path) as pdf:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 417,
+        "snippet": "def export_to_multiple_formats(df, base_name):"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/pdf-to-structured/SKILL.md",
+        "line_number": 419,
+        "snippet": "df.to_excel(f\"{base_name}.xlsx\", index=False)"
+      }
     ],
-    "remediation": "Validate all input file paths and the output path against allowed directories. Implement project-scoped access controls ensuring users can only reference files within their own project's document store. Use file IDs resolved server-side rather than raw filesystem paths."
+    "remediation": "Implement a path validation utility that all file-accepting functions use: resolve real paths, enforce that they reside within an allowed base directory, reject '..' sequences and absolute paths, and validate file extensions match expected types (e.g., .pdf for PDF functions)."
+  },
+  {
+    "id": "VULN-009",
+    "severity": "medium",
+    "location": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/specification-extractor/SKILL.md",
+    "title": "Unsanitized file path in extract_from_pdf enables arbitrary PDF file read",
+    "description": "SpecificationExtractor.extract_from_pdf() accepts a user-supplied pdf_path and passes it directly to pdfplumber.open() with no path validation. When exposed through an API, this allows reading arbitrary PDF files from the filesystem and returning their parsed content (sections, products, submittals, standards) through the SpecExtractionResult.",
+    "impact": "Information disclosure through arbitrary file read. Sensitive PDF documents outside the intended scope (contracts, financial documents, HR records) can be read and their structured content extracted and returned to the attacker.",
+    "attack_path": [
+      "1. Attacker provides a path like '/app/private/contracts/confidential.pdf' or '../../secrets/internal_report.pdf'",
+      "2. extract_from_pdf() at line 103 passes the path to pdfplumber.open(pdf_path) at line 110",
+      "3. The full text is extracted and parsed into sections, products, submittals, and standards",
+      "4. The structured SpecExtractionResult containing sensitive document content is returned to the attacker"
+    ],
+    "evidence": [
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/specification-extractor/SKILL.md",
+        "line_number": 103,
+        "snippet": "def extract_from_pdf(self, pdf_path: str) -> SpecExtractionResult:"
+      },
+      {
+        "file_path": "/workspace/2_DDC_Book/2.4-PDF-CAD-to-Data/specification-extractor/SKILL.md",
+        "line_number": 110,
+        "snippet": "with pdfplumber.open(pdf_path) as pdf:"
+      }
+    ],
+    "remediation": "Validate pdf_path by resolving it to a real path and checking it resides within an allowed documents directory. Reject paths with '..' components and validate the file extension is .pdf."
+  },
+  {
+    "id": "VULN-010",
+    "severity": "medium",
+    "location": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+    "title": "API key hardcoded in example usage encourages insecure credential handling",
+    "description": "The Quick Start section demonstrates initializing the API client with a plaintext string 'your_key' as the API key parameter. While this is a placeholder, the pattern encourages hardcoding credentials directly in source code. No guidance is provided for using environment variables, secret managers, or configuration files. Combined with the key being sent as a URL parameter (VULN-007), this creates a credential exposure chain.",
+    "impact": "Developers copying this pattern will hardcode API keys in source files, which get committed to version control, shared in logs, and exposed in CI/CD pipelines, leading to credential leakage.",
+    "attack_path": [
+      "1. Developer follows the Quick Start example and replaces 'your_key' with their actual FRED API key in source code",
+      "2. The file is committed to a Git repository (potentially public)",
+      "3. An attacker scanning public repositories finds the hardcoded API key",
+      "4. Attacker uses the key for unauthorized API access"
+    ],
+    "evidence": [
+      {
+        "file_path": "/workspace/2_DDC_Book/2.2-Open-Data-Standards/price-api/SKILL.md",
+        "line_number": 284,
+        "snippet": "api = OpenPriceAPI(fred_api_key=\"your_key\")"
+      }
+    ],
+    "remediation": "Update examples to use environment variables: api = OpenPriceAPI(fred_api_key=os.environ.get('FRED_API_KEY')). Add a note warning against hardcoding credentials and recommend using .env files excluded from version control."
   }
 ]
