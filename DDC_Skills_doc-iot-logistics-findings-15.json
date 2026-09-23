@@ -9,13 +9,18 @@
       "id": "F1",
       "severity": "critical",
       "location": "5_DDC_Innovative/sensor-data-aggregator/SKILL.md",
-      "title": "SUSPECT quality and empty thresholds fail-open — suppress gas/vibration safety alerts",
+      "title": "SUSPECT quality and empty thresholds fail-open \u2014 suppress gas/vibration safety alerts",
       "description": "ingest_reading validates quality then only calls _check_thresholds when quality==GOOD. Values above configured max, or spikes >50% from the 5-minute average, are marked SUSPECT and never alert. Separately, register_sensor(thresholds={}) skips DEFAULT_THRESHOLDS (None-only fallback), so a gas/dust sensor can be registered with no warning/critical keys and never alert on any reading.",
       "impact": "Life-safety / environmental monitoring disabled: toxic gas spikes, structural vibration, or dust exceedances produce no CRITICAL alerts while readings are still stored as monitoring evidence.",
-      "attack_path": "1) Register GAS sensor with thresholds={} OR use defaults with max set. 2) Ingest sudden spike (e.g. 10→75 ppm) or value > max. 3) quality=SUSPECT → _check_thresholds skipped. 4) Site continues work under false 'no alerts' posture.",
-      "evidence_lines": ["SKILL.md:166-195", "SKILL.md:213-228", "SKILL.md:232-239", "SKILL.md:147-152"],
+      "attack_path": "1) Register GAS sensor with thresholds={} OR use defaults with max set. 2) Ingest sudden spike (e.g. 10\u219275 ppm) or value > max. 3) quality=SUSPECT \u2192 _check_thresholds skipped. 4) Site continues work under false 'no alerts' posture.",
+      "evidence_lines": [
+        "SKILL.md:166-195",
+        "SKILL.md:213-228",
+        "SKILL.md:232-239",
+        "SKILL.md:147-152"
+      ],
       "remediation": "Always evaluate thresholds regardless of quality flag (alert on BAD/SUSPECT extremes). Treat empty thresholds as DEFAULT_THRESHOLDS.get(type). Escalate SUSPECT spikes that cross critical limits.",
-      "poc": "value=75 recent_avg=10 max=100 critical=50 → quality=suspect alerted=False; thresholds={} → never alerts on 999"
+      "poc": "value=75 recent_avg=10 max=100 critical=50 \u2192 quality=suspect alerted=False; thresholds={} \u2192 never alerts on 999"
     },
     {
       "id": "F2",
@@ -24,34 +29,49 @@
       "title": "Missing readings and TWA-only params report COMPLIANT (noise/PM fail-open)",
       "description": "_get_compliance_status only inspects limits with averaging_period_hours==0. Noise/PM2.5/PM10 defaults are TWA-only (8h/24h/0.25h), so get_current_conditions always shows COMPLIANT even at 200 dBA. check_compliance skips parameters with no readings (continue), so generate_daily_report with zero data yields overall COMPLIANT.",
       "impact": "Forged clean environmental compliance reports and live dashboards while OSHA/EPA noise and particulate limits are exceeded or sensors are offline.",
-      "attack_path": "1) Omit submissions or stop sensors. 2) generate_daily_report → exceedances=0, compliance_status=COMPLIANT. Or submit noise=200; get_current_conditions status=compliant because no instantaneous limit is evaluated.",
-      "evidence_lines": ["SKILL.md:353-367", "SKILL.md:143-163", "SKILL.md:386-387", "SKILL.md:452-478"],
-      "remediation": "Missing required readings → CRITICAL/unknown, not COMPLIANT. Evaluate all limit types (including TWA/short-term) in _get_compliance_status. Fail closed on sensor gaps.",
-      "poc": "noise 200 → compliant via instant-only check; 0 readings → daily COMPLIANT"
+      "attack_path": "1) Omit submissions or stop sensors. 2) generate_daily_report \u2192 exceedances=0, compliance_status=COMPLIANT. Or submit noise=200; get_current_conditions status=compliant because no instantaneous limit is evaluated.",
+      "evidence_lines": [
+        "SKILL.md:353-367",
+        "SKILL.md:143-163",
+        "SKILL.md:386-387",
+        "SKILL.md:452-478"
+      ],
+      "remediation": "Missing required readings \u2192 CRITICAL/unknown, not COMPLIANT. Evaluate all limit types (including TWA/short-term) in _get_compliance_status. Fail closed on sensor gaps.",
+      "poc": "noise 200 \u2192 compliant via instant-only check; 0 readings \u2192 daily COMPLIANT"
     },
     {
       "id": "F3",
       "severity": "high",
       "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
-      "title": "Crane assignment ignores capacity — overloaded lifts scheduled",
+      "title": "Crane assignment ignores capacity \u2014 overloaded lifts scheduled",
       "description": "_find_available_crane returns any crane whose reach covers the zone. Equipment.capacity (tons) and DeliveryRequest.quantity are never compared. Crane schedule concurrency is also stubbed (comment admits simplified check).",
-      "impact": "Optimizer schedules lifts that exceed crane SWL → tip-over / dropped-load risk, colliding with concurrent bay/crane use.",
+      "impact": "Optimizer schedules lifts that exceed crane SWL \u2192 tip-over / dropped-load risk, colliding with concurrent bay/crane use.",
       "attack_path": "1) Register 2t crane covering Zone-A. 2) DeliveryRequest quantity=25 (tons), requires_crane=True. 3) schedule_deliveries assigns that crane. 4) Field executes overloaded lift from trusted schedule.",
-      "evidence_lines": ["SKILL.md:134-140", "SKILL.md:143-154", "SKILL.md:287-296", "SKILL.md:349-362"],
+      "evidence_lines": [
+        "SKILL.md:134-140",
+        "SKILL.md:143-154",
+        "SKILL.md:287-296",
+        "SKILL.md:349-362"
+      ],
       "remediation": "Require delivery.quantity <= crane.capacity (with safety factor). Track crane time occupancy; reject overlapping assignments.",
-      "poc": "crane capacity=2t lift=25t → ALLOWED"
+      "poc": "crane capacity=2t lift=25t \u2192 ALLOWED"
     },
     {
       "id": "F4",
       "severity": "high",
       "location": "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md",
-      "title": "get_expiring_warranties default window always empty (ACTIVE ∩ ≤90d impossible)",
-      "description": "status property returns EXPIRING_SOON when days_remaining≤90 and ACTIVE only when >90. get_expiring_warranties(days=90) filters status==ACTIVE AND end_date≤today+90 — empty by construction. get_summary.expiring_soon and Quick Start get_expiring_warranties(90) therefore never alert.",
+      "title": "get_expiring_warranties default window always empty (ACTIVE \u2229 \u226490d impossible)",
+      "description": "status property returns EXPIRING_SOON when days_remaining\u226490 and ACTIVE only when >90. get_expiring_warranties(days=90) filters status==ACTIVE AND end_date\u2264today+90 \u2014 empty by construction. get_summary.expiring_soon and Quick Start get_expiring_warranties(90) therefore never alert.",
       "impact": "Warranties quietly expire; claims and handover miss coverage. Closeout relies on a broken alert path.",
-      "attack_path": "1) Add warranties with ≤90d remaining (normal state near expiry). 2) Call get_expiring_warranties() / generate summary. 3) expiring_soon=0 despite imminent expiry → no claim filing / owner handover gap.",
-      "evidence_lines": ["SKILL.md:113-122", "SKILL.md:289-295", "SKILL.md:330", "SKILL.md:416-417"],
+      "attack_path": "1) Add warranties with \u226490d remaining (normal state near expiry). 2) Call get_expiring_warranties() / generate summary. 3) expiring_soon=0 despite imminent expiry \u2192 no claim filing / owner handover gap.",
+      "evidence_lines": [
+        "SKILL.md:113-122",
+        "SKILL.md:289-295",
+        "SKILL.md:330",
+        "SKILL.md:416-417"
+      ],
       "remediation": "Filter on days_remaining in (0, threshold] (include EXPIRING_SOON). Do not require ACTIVE.",
-      "poc": "warranties at 30/60/89/90d → statuses expiring_soon; get_expiring(90)=[]"
+      "poc": "warranties at 30/60/89/90d \u2192 statuses expiring_soon; get_expiring(90)=[]"
     },
     {
       "id": "F5",
@@ -60,32 +80,43 @@
       "title": "NCR contractor response auto-ACCEPTED; verify closes defects with no evidence",
       "description": "record_ncr_response writes contractor text and immediately sets NCRStatus.ACCEPTED (no owner review state). verify_remediation sets VERIFIED and closes all linked defects without requiring photos, re-inspection, or hold-point clearance (distinct from already-reported hold-point skip on conduct_inspection).",
       "impact": "Contractor self-clears structural/safety NCRs; defective work marked closed in QC metrics and downstream payment/closeout.",
-      "attack_path": "1) NCR ISSUED for critical defect. 2) record_ncr_response(fake plan) → ACCEPTED. 3) verify_remediation(any name) → VERIFIED; defects status=closed. 4) get_quality_metrics understates open defects.",
-      "evidence_lines": ["SKILL.md:257-270", "SKILL.md:272-287", "SKILL.md:295"],
-      "remediation": "Response → UNDER_REVIEW pending owner accept. verify_remediation requires linked re-inspection PASS + photo evidence; separate ACCEPTED vs VERIFIED gates.",
-      "poc": "response→ACCEPTED; verify→defects closed, photos unused"
+      "attack_path": "1) NCR ISSUED for critical defect. 2) record_ncr_response(fake plan) \u2192 ACCEPTED. 3) verify_remediation(any name) \u2192 VERIFIED; defects status=closed. 4) get_quality_metrics understates open defects.",
+      "evidence_lines": [
+        "SKILL.md:257-270",
+        "SKILL.md:272-287",
+        "SKILL.md:295"
+      ],
+      "remediation": "Response \u2192 UNDER_REVIEW pending owner accept. verify_remediation requires linked re-inspection PASS + photo evidence; separate ACCEPTED vs VERIFIED gates.",
+      "poc": "response\u2192ACCEPTED; verify\u2192defects closed, photos unused"
     },
     {
       "id": "F6",
       "severity": "high",
       "location": "1_DDC_Toolkit/Schedule-Management/schedule-delay-analyzer/SKILL.md",
       "title": "Forged EOT claim: attacker-controlled on_critical_path/type, empty documentation",
-      "description": "record_delay trusts caller-supplied on_critical_path and DelayType. calculate_time_extension_claim sums EXCUSABLE_* ∩ on_critical_path into recommended_extension. DelayEvent.documentation defaults to [] and is never required or validated against a schedule network.",
+      "description": "record_delay trusts caller-supplied on_critical_path and DelayType. calculate_time_extension_claim sums EXCUSABLE_* \u2229 on_critical_path into recommended_extension. DelayEvent.documentation defaults to [] and is never required or validated against a schedule network.",
       "impact": "Inflated time-extension / cost claims against owner with no evidence trail; projected_completion shifted by forged critical-path days.",
-      "attack_path": "1) record_delay(..., delay_type=EXCUSABLE_COMPENSABLE, on_critical_path=True, end-start=30d). 2) calculate_time_extension_claim → recommended_extension+=30, compensable cost_impact included. 3) Export as claim basis.",
-      "evidence_lines": ["SKILL.md:40-50", "SKILL.md:74-96", "SKILL.md:121-138"],
+      "attack_path": "1) record_delay(..., delay_type=EXCUSABLE_COMPENSABLE, on_critical_path=True, end-start=30d). 2) calculate_time_extension_claim \u2192 recommended_extension+=30, compensable cost_impact included. 3) Export as claim basis.",
+      "evidence_lines": [
+        "SKILL.md:40-50",
+        "SKILL.md:74-96",
+        "SKILL.md:121-138"
+      ],
       "remediation": "Derive critical-path flag from linked CPM analyzer. Require non-empty documentation for EXCUSABLE claims. Cap/validate delay_days against activity float.",
-      "poc": "EXCUSABLE_COMPENSABLE + on_critical_path=True + docs=[] → extension inflated"
+      "poc": "EXCUSABLE_COMPENSABLE + on_critical_path=True + docs=[] \u2192 extension inflated"
     },
     {
       "id": "F7",
       "severity": "high",
       "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md",
-      "title": "Attachment path open() arbitrary file read → SMTP exfiltration",
+      "title": "Attachment path open() arbitrary file read \u2192 SMTP exfiltration",
       "description": "ConstructionEmailSender.send opens email_data['attachments'] paths with no allowlist/sandbox. Templates and Excel-driven RFI integration pass attachment lists into send(). (Subject CRLF injection is mitigated by email.header HeaderParseError on as_string; attachment read is not.)",
       "impact": "Agent/workflow that sends generated mail can attach /etc/passwd, payroll, or contract files to external recipients.",
-      "attack_path": "1) Set attachments=['/etc/passwd'] or relative traversal in RFI log. 2) generate_*_email → send(). 3) open() reads secret; MIMEApplication attaches; SMTP delivers off-site.",
-      "evidence_lines": ["SKILL.md:415-436", "SKILL.md:459-471"],
+      "attack_path": "1) Set attachments=['/etc/passwd'] or relative traversal in RFI log. 2) generate_*_email \u2192 send(). 3) open() reads secret; MIMEApplication attaches; SMTP delivers off-site.",
+      "evidence_lines": [
+        "SKILL.md:415-436",
+        "SKILL.md:459-471"
+      ],
       "remediation": "Resolve paths under an attachments root; reject absolute/escaping paths. Map IDs to stored blobs instead of raw filesystem paths.",
       "poc": "open('/tmp/secret_wage.txt') via attachment path succeeded"
     },
@@ -94,26 +125,62 @@
       "severity": "high",
       "location": "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md",
       "title": "split_csv path traversal via group_column (and slash-bearing values)",
-      "description": "split_csv builds filename=f\"{group_column}_{value}.csv\" then output_path/filename with no sanitization. Pathlib treats '/' and '..' in group_column/value as path components, writing outside output_dir (PoC: group_column='../../tmp/trav' → /tmp/trav_x.csv).",
+      "description": "split_csv builds filename=f\"{group_column}_{value}.csv\" then output_path/filename with no sanitization. Pathlib treats '/' and '..' in group_column/value as path components, writing outside output_dir (PoC: group_column='../../tmp/trav' \u2192 /tmp/trav_x.csv).",
       "impact": "Malicious CSV column name/arg overwrites arbitrary writable files during 'split by category' automation.",
       "attack_path": "1) Call split_csv(df, group_column='../../tmp/trav', output_dir='/tmp/out'). 2) File written at /tmp/trav_x.csv outside intended directory.",
-      "evidence_lines": ["SKILL.md:161-176", "SKILL.md:277-278"],
+      "evidence_lines": [
+        "SKILL.md:161-176",
+        "SKILL.md:277-278"
+      ],
       "remediation": "Sanitize to [A-Za-z0-9_-]; use basename only; resolve and assert filepath is under output_path.resolve().",
-      "poc": "group='../../tmp/trav' → wrote /tmp/trav_x.csv"
+      "poc": "group='../../tmp/trav' \u2192 wrote /tmp/trav_x.csv"
     }
   ],
   "dropped": [
-    {"skill": "email-construction header injection", "why": "email.errors.HeaderParseError blocks embedded headers on as_string()"},
-    {"skill": "xml-reader XXE", "why": "xml.etree.ElementTree does not expand external entities by default"},
-    {"skill": "permit-tracking-automation", "why": "empty docs ACTIVE already reported"},
-    {"skill": "submittal-tracker / as-built / punch-list / safety-* / daily-progress / duration-prediction / 4d predecessor / n8n / digital-twin / ids-checker", "why": "already reported"},
-    {"skill": "rfi-management close without ANSWERED", "why": "MEDIUMish gate skip; weaker than F5/F6 evidence chains — noted but not primary"},
-    {"skill": "equipment-telematics geofence", "why": "missing unauthorized-entry alert is HIGH-adjacent but incomplete vs F1/F3; load_percentage unchecked weak alone"},
-    {"skill": "progress-photo-analyzer Field-Ops", "why": "catalog-only, no status gates"},
-    {"skill": "daily-report-generator", "why": "aggregator/PDF; no evidence-skip completion stamp (distinct daily-progress already filed)"},
-    {"skill": "json-parser/csv read/ERP/vector/voice/llm/multi-agent/n8n-pto", "why": "no new MEDIUM+ complete chain beyond prior n8n filings"},
-    {"skill": "warranty claim APPROVED without docs", "why": "secondary to F4; weaker standalone impact"},
-    {"skill": "meeting-minutes COMPLETE", "why": "status flip without evidence — LOW/MEDIUM process only"}
+    {
+      "skill": "email-construction header injection",
+      "why": "email.errors.HeaderParseError blocks embedded headers on as_string()"
+    },
+    {
+      "skill": "xml-reader XXE",
+      "why": "xml.etree.ElementTree does not expand external entities by default"
+    },
+    {
+      "skill": "permit-tracking-automation",
+      "why": "empty docs ACTIVE already reported"
+    },
+    {
+      "skill": "submittal-tracker / as-built / punch-list / safety-* / daily-progress / duration-prediction / 4d predecessor / n8n / digital-twin / ids-checker",
+      "why": "already reported"
+    },
+    {
+      "skill": "rfi-management close without ANSWERED",
+      "why": "MEDIUMish gate skip; weaker than F5/F6 evidence chains \u2014 noted but not primary"
+    },
+    {
+      "skill": "equipment-telematics geofence",
+      "why": "missing unauthorized-entry alert is HIGH-adjacent but incomplete vs F1/F3; load_percentage unchecked weak alone"
+    },
+    {
+      "skill": "progress-photo-analyzer Field-Ops",
+      "why": "catalog-only, no status gates"
+    },
+    {
+      "skill": "daily-report-generator",
+      "why": "aggregator/PDF; no evidence-skip completion stamp (distinct daily-progress already filed)"
+    },
+    {
+      "skill": "json-parser/csv read/ERP/vector/voice/llm/multi-agent/n8n-pto",
+      "why": "no new MEDIUM+ complete chain beyond prior n8n filings"
+    },
+    {
+      "skill": "warranty claim APPROVED without docs",
+      "why": "secondary to F4; weaker standalone impact"
+    },
+    {
+      "skill": "meeting-minutes COMPLETE",
+      "why": "status flip without evidence \u2014 LOW/MEDIUM process only"
+    }
   ],
   "skills_reviewed": [
     "Document-Control: rfi, meeting-minutes, contract-clause, submittal(skip), as-built(skip)",
@@ -126,5 +193,7 @@
     "Book: xml/json/csv, erp-data-extractor, vector/parquet, interoperability skim",
     "Curated: email-construction",
     "Insights: quality-control-workflow, n8n-pto, voice-to-report, llm-document-extraction, multi-agent-estimation"
-  ]
+  ],
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_doc-iot-logistics-findings-15.json",
+  "memory_key": "DDC_Skills_for_AI_Agents_in_Construction---flagged-vulnerabilities-15.json"
 }
