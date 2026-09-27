@@ -1,0 +1,44 @@
+{
+  "hunt": "safety-iot-quality-permits-cv-ml-bim-remaining",
+  "date": "2026-09-27",
+  "run": "https://cursor.com/agents/bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
+  "result": "3 CRITICAL + 3 HIGH validated",
+  "poc_results": [
+    {
+      "id": "F1",
+      "severity": "critical",
+      "title": "Fall protection any() stamps whole crew COMPLIANT when only one worker has harness",
+      "poc": "80ft steel, 5 workers 1 harness \u2192 compliant; all()=False"
+    },
+    {
+      "id": "F2",
+      "severity": "critical",
+      "title": "Excavation/scaffolding/electrical OSHA rules loaded but never evaluated by check_work_activity",
+      "poc": "excavation with only helmet \u2192 COMPLIANT; 651/451/405 never consulted"
+    },
+    {
+      "id": "F3",
+      "severity": "critical",
+      "title": "Sensor threshold alerts are high-side only so oxygen deficiency / low atmosphere never fires",
+      "poc": "O2=12.0 GAS defaults \u2192 alerts=[]; >=-only check cannot express low-side IDLH"
+    },
+    {
+      "id": "F4",
+      "severity": "high",
+      "title": "CRITICAL overheat fault never changes OPERATING status \u2014 no equipment lockout",
+      "poc": "coolant=110 CRITICAL but status=OPERATING"
+    },
+    {
+      "id": "F5",
+      "severity": "high",
+      "title": "Material IoT storage alerts skip when material type substring absent from name",
+      "poc": "steel/concrete named without keyword \u2192 no temp/humidity alerts: ['W14x90 Beams', 'A992 Structural Members', 'Ready-Mix C40 Pour', 'Lumber SPF']"
+    },
+    {
+      "id": "F6",
+      "severity": "high",
+      "title": "check_permit_status is_valid ignores missing documents and null expiry",
+      "poc": "ACTIVE + missing ['fire_protection', 'specs', 'structural_calcs', 'survey'] + expiry=None \u2192 is_valid=True"
+    }
+  ]
+}
