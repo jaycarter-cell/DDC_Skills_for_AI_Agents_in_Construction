@@ -3,7 +3,7 @@
   "date": "2026-09-27",
   "run": "https://cursor.com/agents/bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
   "branch": "cursor/vulnerability-finding-memory-858b",
-  "commit_hash": "pending",
+  "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
   "result": "3 CRITICAL + 3 HIGH validated findings",
   "artifact": "/opt/cursor/artifacts/DDC_Skills_safety-iot-quality-remaining-findings-21.json",
   "scope": [
@@ -41,10 +41,10 @@
     "BIM FireRating/IfcWall/IDS/clash VOID; ML pickle/joblib"
   ],
   "near_misses_rejected": [
-    "progress-monitoring-cv PPE heuristic — advisory Medium/Info only, no work-authorization stamp",
-    "drone volume grid max_z — quantity estimate without pay-app gate in this skill",
-    "DeadlineMonitor days_to_expiry == threshold — ops miss, expired still caught by <0",
-    "ML cost fillna(0) missing features — advisory prediction without award gate beyond already-reported deser"
+    "progress-monitoring-cv PPE heuristic \u2014 advisory Medium/Info only, no work-authorization stamp",
+    "drone volume grid max_z \u2014 quantity estimate without pay-app gate in this skill",
+    "DeadlineMonitor days_to_expiry == threshold \u2014 ops miss, expired still caught by <0",
+    "ML cost fillna(0) missing features \u2014 advisory prediction without award gate beyond already-reported deser"
   ],
   "findings": [
     {
@@ -52,31 +52,31 @@
       "location": "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
       "title": "Fall protection any() stamps whole crew COMPLIANT when only one worker has a harness",
       "description": "check_work_activity() sets fall-protection COMPLIANT via any(harness in worker.ppe or guardrail in equipment). One harnessed worker (or a single guardrail token) clears the OSHA-1926.501 CRITICAL check for every co-worker on the activity. Distinct from already-reported height_ft<6 skip and from forging harness strings on every worker / SiteInspectionSystem compliant:true responses.",
-      "impact": "Official OSHA fall-protection gate authorizes unprotected workers at height. Local PoC: 80 ft steel erection, 5 workers, 1 harness → COMPLIANT; all() correctly False.",
+      "impact": "Official OSHA fall-protection gate authorizes unprotected workers at height. Local PoC: 80 ft steel erection, 5 workers, 1 harness \u2192 COMPLIANT; all() correctly False.",
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
-      "attack_path": "1. AI agent uses SafetyComplianceEngine.check_work_activity as the live fall-protection gate.\n2. Activity is submitted at height>=6 with multiple workers; only one worker.ppe contains 'harness' (or equipment lists 'guardrail').\n3. any() returns True; status=COMPLIANT for the whole activity; no per-worker fall findings.\n4. Dashboard publishes COMPLIANT while co-workers remain unprotected — fall fatality exposure.",
+      "attack_path": "1. AI agent uses SafetyComplianceEngine.check_work_activity as the live fall-protection gate.\n2. Activity is submitted at height>=6 with multiple workers; only one worker.ppe contains 'harness' (or equipment lists 'guardrail').\n3. any() returns True; status=COMPLIANT for the whole activity; no per-worker fall findings.\n4. Dashboard publishes COMPLIANT while co-workers remain unprotected \u2014 fall fatality exposure.",
       "evidence": [
         "5_DDC_Innovative/safety-compliance-checker/SKILL.md:232-248",
         "5_DDC_Innovative/safety-compliance-checker/SKILL.md:236-239",
         "5_DDC_Innovative/safety-compliance-checker/SKILL.md:158-165"
       ],
       "remediation": "Require all() workers to have harness when no collective guardrail/net system is verified. Treat guardrail as collective only when independently confirmed. Emit per-worker NON_COMPLIANT findings.",
-      "poc_video_notes": "Local non-destructive PoC: 80ft, 5 workers, 1 harness → COMPLIANT; all()=False."
+      "poc_video_notes": "Local non-destructive PoC: 80ft, 5 workers, 1 harness \u2192 COMPLIANT; all()=False."
     },
     {
       "severity": "critical",
       "location": "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
       "title": "Excavation, scaffolding, and electrical OSHA rules are loaded but never evaluated",
-      "description": "_load_default_rules() registers OSHA-1926.651 (excavation daily inspection, HIGH), OSHA-1926.451 (scaffold ties max_height_without_tie=26, HIGH), and OSHA-1926.405 (GFCI/grounding, CRITICAL). check_work_activity() never references those rule_ids or categories — it only runs fall (height>=6), helmet PPE, hot-work string types, and confined_space flag. An excavation or electrical activity with only a hard hat returns PPE COMPLIANT and nothing else. Distinct from SiteInspectionSystem forged compliant responses and from fall any()/height skip.",
-      "impact": "Cave-in, scaffold collapse, and electrocution controls advertised in the rule pack never gate work. Local PoC: type=excavation → only PPE COMPLIANT; 651/451/405 never consulted.",
+      "description": "_load_default_rules() registers OSHA-1926.651 (excavation daily inspection, HIGH), OSHA-1926.451 (scaffold ties max_height_without_tie=26, HIGH), and OSHA-1926.405 (GFCI/grounding, CRITICAL). check_work_activity() never references those rule_ids or categories \u2014 it only runs fall (height>=6), helmet PPE, hot-work string types, and confined_space flag. An excavation or electrical activity with only a hard hat returns PPE COMPLIANT and nothing else. Distinct from SiteInspectionSystem forged compliant responses and from fall any()/height skip.",
+      "impact": "Cave-in, scaffold collapse, and electrocution controls advertised in the rule pack never gate work. Local PoC: type=excavation \u2192 only PPE COMPLIANT; 651/451/405 never consulted.",
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
       "attack_path": "1. Agent runs SafetyComplianceEngine as the OSHA activity gate.\n2. Attacker (or honest feed) submits excavation/scaffolding/electrical work without shoring, ties, or GFCI.\n3. check_work_activity never loads OSHA-1926.651/451/405 into ComplianceCheck results.\n4. Only helmet PPE may show COMPLIANT; work proceeds without the advertised life-safety rules.",
       "evidence": [
@@ -85,20 +85,20 @@
         "5_DDC_Innovative/safety-compliance-checker/SKILL.md:232-315"
       ],
       "remediation": "Implement excavation (protective system + daily inspection), scaffolding (ties above 26 ft, fully planked), and electrical (GFCI) branches in check_work_activity. Fail closed when activity type matches and required evidence is absent.",
-      "poc_video_notes": "Local PoC: excavation checks=[PPE COMPLIANT]; scaffolding 40ft with 1 harness → FALL COMPLIANT and 451 never run."
+      "poc_video_notes": "Local PoC: excavation checks=[PPE COMPLIANT]; scaffolding 40ft with 1 harness \u2192 FALL COMPLIANT and 451 never run."
     },
     {
       "severity": "critical",
       "location": "5_DDC_Innovative/sensor-data-aggregator/SKILL.md",
       "title": "Strain/tilt/pressure get empty default thresholds and min never creates low-side alerts",
-      "description": "register_sensor() copies DEFAULT_THRESHOLDS.get(sensor_type, {}). PRESSURE, STRAIN, TILT (and GPS/PROXIMITY) have no defaults, so thresholds={}. _check_thresholds only alerts when value >= warning/critical — it never alerts on value <= min or a low critical. min/max are used only in _validate_reading to mark SUSPECT. Distinct from the already-reported SUSPECT-spike path that suppresses high-side criticals: here structural movement sensors never alert even on GOOD readings, and any configured safety floor cannot produce CRITICAL.",
+      "description": "register_sensor() copies DEFAULT_THRESHOLDS.get(sensor_type, {}). PRESSURE, STRAIN, TILT (and GPS/PROXIMITY) have no defaults, so thresholds={}. _check_thresholds only alerts when value >= warning/critical \u2014 it never alerts on value <= min or a low critical. min/max are used only in _validate_reading to mark SUSPECT. Distinct from the already-reported SUSPECT-spike path that suppresses high-side criticals: here structural movement sensors never alert even on GOOD readings, and any configured safety floor cannot produce CRITICAL.",
       "impact": "Structural health / confined-atmosphere floors that agents register as strain, tilt, or pressure (or O2 via min) produce zero alerts. Building movement and oxygen deficiency stay silent on the official IoT aggregator.",
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
-      "attack_path": "1. Agent uses SensorDataAggregator for structural tilt/strain or atmospheric monitoring.\n2. Sensor registered as STRAIN/TILT/PRESSURE without custom thresholds (defaults {}), or GAS/TEMP with only min as the safety floor.\n3. Extreme reading: empty thresholds → _check_thresholds no-ops; or value < min → SUSPECT and still no low-side alert branch.\n4. get_active_alerts / zone summary stay clean while structure moves or atmosphere is unsafe.",
+      "attack_path": "1. Agent uses SensorDataAggregator for structural tilt/strain or atmospheric monitoring.\n2. Sensor registered as STRAIN/TILT/PRESSURE without custom thresholds (defaults {}), or GAS/TEMP with only min as the safety floor.\n3. Extreme reading: empty thresholds \u2192 _check_thresholds no-ops; or value < min \u2192 SUSPECT and still no low-side alert branch.\n4. get_active_alerts / zone summary stay clean while structure moves or atmosphere is unsafe.",
       "evidence": [
         "5_DDC_Innovative/sensor-data-aggregator/SKILL.md:130-138",
         "5_DDC_Innovative/sensor-data-aggregator/SKILL.md:147-152",
@@ -107,18 +107,18 @@
         "5_DDC_Innovative/sensor-data-aggregator/SKILL.md:52-64"
       ],
       "remediation": "Ship defaults for strain/tilt/pressure. Alert on value <= min and on low critical bands. Never use quality SUSPECT to skip safety alerts. Fail closed when life-safety sensor types have empty thresholds.",
-      "poc_video_notes": "Local PoC: strain/tilt/pressure defaults {}; O2-like 12 with min→SUSPECT alerts=[]; high-side-only >= cannot express low IDLH."
+      "poc_video_notes": "Local PoC: strain/tilt/pressure defaults {}; O2-like 12 with min\u2192SUSPECT alerts=[]; high-side-only >= cannot express low IDLH."
     },
     {
       "severity": "high",
       "location": "5_DDC_Innovative/equipment-telematics/SKILL.md",
-      "title": "CRITICAL coolant overheat fault never changes OPERATING status — no lockout",
+      "title": "CRITICAL coolant overheat fault never changes OPERATING status \u2014 no lockout",
       "description": "ingest_reading() derives OperatingStatus solely from engine_rpm/load_percentage. _check_diagnostics can append FaultSeverity.CRITICAL for coolant_temp>100, but get_current_status and get_fleet_summary still report status=operating with active_faults counted separately. There is no lockout, no status=FAULT, and no refuse-to-dispatch path. Distinct from already-reported inverted geofence and from Toolkit equipment-fleet-manager MAINTENANCE assign.",
       "impact": "Overheating crane/excavator remains OPERATING on the telematics dashboard used for dispatch. Continued operation risks hydraulic/engine failure and struck-by during failure.",
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
       "attack_path": "1. Agent uses EquipmentTelematicsManager as live fleet status for dispatch.\n2. Honest or spoofed reading: rpm=1800, coolant_temp=110.\n3. CRITICAL COOLANT_TEMP_HIGH fault logged; operating_status stays OPERATING.\n4. get_current_status/get_fleet_summary show operating equipment; crews keep running the machine.",
       "evidence": [
@@ -128,7 +128,7 @@
         "5_DDC_Innovative/equipment-telematics/SKILL.md:424-457"
       ],
       "remediation": "On FaultSeverity.CRITICAL set operating status to FAULT/LOCKOUT and exclude from dispatch/fleet operating counts until an authenticated clear.",
-      "poc_video_notes": "Local PoC: rpm=1800 coolant=110 → status=OPERATING with CRITICAL_fault=True."
+      "poc_video_notes": "Local PoC: rpm=1800 coolant=110 \u2192 status=OPERATING with CRITICAL_fault=True."
     },
     {
       "severity": "high",
@@ -139,16 +139,16 @@
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
-      "attack_path": "1. Agent uses MaterialTracker IoT storage monitoring for yard conditions.\n2. Materials registered under trade names without 'steel'/'concrete'/'wood'/'paint' substrings.\n3. Extreme humidity/temperature readings update StorageCondition but material_type stays None → continue.\n4. No alerts; inventory remains is_acceptable; damaged stock ships to install.",
+      "attack_path": "1. Agent uses MaterialTracker IoT storage monitoring for yard conditions.\n2. Materials registered under trade names without 'steel'/'concrete'/'wood'/'paint' substrings.\n3. Extreme humidity/temperature readings update StorageCondition but material_type stays None \u2192 continue.\n4. No alerts; inventory remains is_acceptable; damaged stock ships to install.",
       "evidence": [
         "5_DDC_Innovative/material-tracking-iot/SKILL.md:293-336",
         "5_DDC_Innovative/material-tracking-iot/SKILL.md:305-314",
         "5_DDC_Innovative/material-tracking-iot/SKILL.md:147-154"
       ],
       "remediation": "Bind material_type at register_material() (required enum), not substring of name. Fail closed when type is unknown for climate-sensitive categories.",
-      "poc_video_notes": "Local PoC: W14x90/A992/Ready-Mix C40/Lumber SPF → type=None, all storage checks skipped."
+      "poc_video_notes": "Local PoC: W14x90/A992/Ready-Mix C40/Lumber SPF \u2192 type=None, all storage checks skipped."
     },
     {
       "severity": "high",
@@ -159,7 +159,7 @@
       "verified": true,
       "status": "active",
       "background_composer_id": "bc-7b79131c-d98f-50fd-80bb-eb7f91ff8a5b",
-      "commit_hash": "pending",
+      "commit_hash": "e261743814b75547d29a1d324b818902a329362a",
       "detected_at_pst": "2026-09-27T02:39:00-07:00",
       "attack_path": "1. Agent uses check_permit_status as the can-work permit gate.\n2. Permit is ACTIVE (legitimately or via prior forge) with submitted_documents missing structural/fire docs and expiry_date=None.\n3. missing_documents alert is raised but is_valid stays True.\n4. Downstream dig/pour/energize proceeds as permitted.",
       "evidence": [
@@ -168,7 +168,7 @@
         "5_DDC_Innovative/permit-tracking-automation/SKILL.md:91-105"
       ],
       "remediation": "Require non-empty future expiry_date and zero missing required documents before is_valid=True. Fail closed on incomplete filings.",
-      "poc_video_notes": "Local PoC: ACTIVE + missing specs/survey/structural_calcs/fire_protection + expiry=None → is_valid=True."
+      "poc_video_notes": "Local PoC: ACTIVE + missing specs/survey/structural_calcs/fire_protection + expiry=None \u2192 is_valid=True."
     }
   ]
 }
