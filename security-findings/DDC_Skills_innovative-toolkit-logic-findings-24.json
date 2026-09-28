@@ -1,0 +1,176 @@
+{
+  "hunt": "innovative-toolkit-schedule-resource-bim-logic-remaining",
+  "date": "2026-09-28",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/at-rest-security-review-d050",
+  "result": "1 CRITICAL + 7 HIGH + 2 MEDIUM validated findings",
+  "skipped_already_reported": [
+    "Fall protection any() stamps whole crew COMPLIANT",
+    "Excavation/scaffolding/electrical OSHA rules never evaluated",
+    "Strain/tilt/pressure empty defaults; min never creates low-side alerts",
+    "CRITICAL coolant fault never changes OPERATING",
+    "Storage checks skip when material type substring absent",
+    "permit is_valid ignores missing documents and null expiry",
+    "Weather SNOW/Tornado",
+    "PPE height skip / forged compliant / self-reported activity",
+    "sensor SUSPECT spike",
+    "permit update_status forge ISSUED",
+    "env TWA / current COMPLIANT / fake readings",
+    "geofence invert; MQTT unauth; as-built empty FINAL",
+    "compliance ACTIVE/NA; inspection NA; TRIR; NCR; QC hold",
+    "telegram/voice; BIM FireRating; ML deser",
+    "schedule blocked activities / constraint forge / crew_size / storage soft-penalty / max_wind=50 / return_equipment maintenance",
+    "digital-twin WS missing auth + subscribe('*')",
+    "material-tracking-iot MQTT unauth",
+    "defect crack→Good; safety hazard empty verify; ITP hold PASSED"
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "5_DDC_Innovative/resource-pool-optimizer/SKILL.md",
+      "title": "_get_availability uses max() not sum — overlapping partial allocations overbook capacity (13 vs 10)",
+      "description": "ResourcePoolOptimizer._get_availability computes currently allocated quantity with max(allocated, alloc.quantity) across overlapping allocations instead of summing concurrent demand. Sequential allocate()/auto_allocate() therefore undercounts booked capacity and accepts new allocations that exceed resource.capacity. The skill advertises avoiding double-booking, but the gate is broken for any resource with capacity > 1.",
+      "impact": "Ironworker/carpenter pools and multi-unit equipment can be over-allocated (PoC: three overlapping bookings totaling 13 against capacity 10). Schedules and site plans show successful allocation while crews/equipment are physically double-booked, driving missed critical-path work and unsafe understaffing.",
+      "attack_path": "1. Agent uses ResourcePoolOptimizer as the enterprise allocation system of record.\n2. Attacker (or competing projects) submit overlapping ResourceRequests for the same labor/equipment pool (e.g., IRON capacity=10).\n3. allocate(R1, qty=3), allocate(R2, qty=3), allocate(R3, qty=7) all succeed because availability uses max(3,3,7)=7 → available=3 wrongly after first two… actually after 3+3 max=3 available=7 so third qty=7 succeeds; total booked=13.\n4. auto_allocate / utilization reports treat bookings as valid; site day starts with 30% shortage.",
+      "evidence": [
+        "5_DDC_Innovative/resource-pool-optimizer/SKILL.md:199-215",
+        "5_DDC_Innovative/resource-pool-optimizer/SKILL.md:231-251",
+        "5_DDC_Innovative/resource-pool-optimizer/SKILL.md:32"
+      ],
+      "remediation": "Sum overlapping allocation quantities (or peak concurrent demand per day) instead of max(); reject allocate when sum+requested > capacity; add regression tests for partial overlapping bookings."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/energy-simulation/SKILL.md",
+      "title": "ComplianceChecker.check_envelope never evaluates floors against floor_u_max — COMPLIANT with failing slabs",
+      "description": "EnergyCodeRequirements defines floor_u_max (ASHRAE/IECC), and BuildingGeometry includes floors, but check_envelope only inspects walls, windows, and roofs. Floors with U-values far above the code maximum never flip compliant=False or append issues.",
+      "impact": "A permit/code package can stamp envelope COMPLIANT while ground floors or exposed slabs fail U-value limits, producing illegal energy-code attestation and undersized heating loads on the floor assembly.",
+      "attack_path": "1. Designer runs ComplianceChecker('ASHRAE_90.1_2019_4A') as the energy-code gate.\n2. Model walls/windows/roofs meet limits; floors use assembly U=0.90 against floor_u_max=0.32.\n3. check_envelope returns compliant=True, issues=[].\n4. Report is submitted as code-compliant envelope evidence.",
+      "evidence": [
+        "5_DDC_Innovative/energy-simulation/SKILL.md:425-458",
+        "5_DDC_Innovative/energy-simulation/SKILL.md:466-522"
+      ],
+      "remediation": "Iterate building.floors and fail when assembly.u_value > floor_u_max; include floor issues in the compliance report; fail closed if floors list is empty when code requires floor checks."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md",
+      "title": "assign_worker only prints conflict warning — overlapping Site A/Site B assignments still created",
+      "description": "assign_worker calls check_conflicts but on overlap only prints a Warning and continues to append the Assignment and set WorkerStatus.ASSIGNED. get_daily_roster therefore lists the same worker on two locations for the same dates.",
+      "impact": "Daily rosters and labor-cost forecasts show full crew coverage on multiple sites while one person cannot be present; safety accountability and certified-trade coverage are falsified.",
+      "attack_path": "1. Agent uses LaborAllocationManager for crew planning.\n2. Attacker assign_worker(W1, Site A rebar, Apr 1–30) then assign_worker(W1, Site B formwork, Apr 1–30).\n3. Conflicts detected but assignment still stored; status=ASSIGNED.\n4. get_daily_roster shows W1 on both sites; utilization/cost reports count both.",
+      "evidence": [
+        "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md:126-160",
+        "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md:162-178",
+        "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md:205-224"
+      ],
+      "remediation": "Refuse overlapping assignments (raise/return None) unless an explicit force flag with audit; block roster export while unresolved conflicts exist."
+    },
+    {
+      "severity": "high",
+      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md",
+      "title": "_evaluate_pass ignores lod_report — pipeline passed=True with failing LOD300",
+      "description": "BIMValidationPipeline.run() executes LODValidator.validate_model() and stores lod_validation in the result, but _evaluate_pass(bim_report, lod_report) never reads lod_report. Pass/fail depends only on bim_report error/warning counts. Models that fail LOD target still get passed=True.",
+      "impact": "Handover/BEP gates that trust pipeline['passed'] accept LOD100/incomplete models as LOD300-validated, corrupting downstream QTO, fabrication, and FM data quality.",
+      "attack_path": "1. Agent runs BIMValidationPipeline with lod_target=LOD300 as the model acceptance gate.\n2. Geometry/naming produce 0 errors and few warnings; LODValidator reports near-zero compliance for walls/slabs.\n3. _evaluate_pass returns True because lod_report is unused.\n4. Export/report shows Passed=True; model proceeds to construction.",
+      "evidence": [
+        "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:499-522",
+        "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:527-535"
+      ],
+      "remediation": "Fail when any LOD type compliance is below a configured threshold or when lod_report contains blocking issues; unit-test pass evaluation with failing LOD and clean BIM report."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+      "title": "_find_available_crane returns first in-reach crane with no schedule check — simultaneous double-book",
+      "description": "DeliveryScheduler._find_available_crane comments that schedule checking is skipped ('In practice, would check crane schedule') and returns the first crane that covers the zone. Concurrent deliveries at the same hour both receive the same crane_id.",
+      "impact": "Day plans assign one crane to unload two bays at once. Distinct from already-reported storage soft-penalty; this is crane temporal double-booking that causes delivery delays and lift conflicts.",
+      "attack_path": "1. Agent builds DailyDeliveryScheduler for site logistics.\n2. Two DeliveryRequests require_crane=True for overlapping windows to different zones both covered by CR1.\n3. schedule_deliveries assigns CR1 to both slots.\n4. get_daily_schedule shows dual CR1 bookings; site executes impossible plan.",
+      "evidence": [
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:286-296",
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:349-362"
+      ],
+      "remediation": "Track crane busy intervals; reject assignment on overlap; persist crane schedule when confirming slots."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Schedule-Management/schedule-delay-analyzer/SKILL.md",
+      "title": "calculate_time_extension_claim trusts caller-forged on_critical_path and EXCUSABLE_COMPENSABLE",
+      "description": "record_delay accepts attacker-controlled delay_type, on_critical_path, delay_days, and cost_impact with no validation against a CPM schedule. calculate_time_extension_claim sums those fields into recommended_extension and total_cost_impact used as EOT claim basis.",
+      "impact": "A contractor can mint multi-million-dollar / multi-month extension-and-cost claims from fabricated critical-path owner delays without schedule proof.",
+      "attack_path": "1. Agent uses ScheduleDelayAnalyzer.calculate_time_extension_claim for claim packages.\n2. Attacker record_delay(..., delay_type=EXCUSABLE_COMPENSABLE, on_critical_path=True, days=45, cost=2e6) plus another 30d/$1.5M.\n3. Claim API returns recommended_extension=75 and total_cost_impact=$3.5M.\n4. Package is submitted to owner/consultant as analyzer output.",
+      "evidence": [
+        "1_DDC_Toolkit/Schedule-Management/schedule-delay-analyzer/SKILL.md:74-96",
+        "1_DDC_Toolkit/Schedule-Management/schedule-delay-analyzer/SKILL.md:121-138"
+      ],
+      "remediation": "Derive on_critical_path from linked CPM; restrict delay_type transitions; require evidence refs; never treat raw caller flags as claim authority."
+    },
+    {
+      "severity": "high",
+      "location": "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/co2-estimation/SKILL.md",
+      "title": "calculate_embodied_carbon fillna(0) zeroes unmapped materials — greenwash A+ rating",
+      "description": "Material names are mapped to emission factors then fillna(0). Unrecognized high-carbon materials (e.g., High-Strength-Steel-S460, Insulation-PIR) contribute 0 kg CO2. classify_carbon_intensity then rates the understated intensity as A+/A without warning about unmapped rows.",
+      "impact": "Regulatory/ESG carbon reports understate embodied carbon (PoC: 50t specialty steel + insulation → 0 kg) and publish falsely low ratings.",
+      "attack_path": "1. Agent runs CarbonCalculator.calculate_embodied_carbon then generate_carbon_report/classify_carbon_intensity.\n2. BIM export uses material strings absent from the factor dictionary (or attacker renames Steel→S460-HS).\n3. fillna(0) drops those tonnes from totals.\n4. Report total_co2 and rating look ultra-low; no unmapped-material alert.",
+      "evidence": [
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/co2-estimation/SKILL.md:127-148",
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/co2-estimation/SKILL.md:404-418"
+      ],
+      "remediation": "Fail closed or apply conservative default factors for unmapped materials; surface unmapped count/mass in the report; block A-rating when unmapped mass > threshold."
+    },
+    {
+      "severity": "high",
+      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/clash-resolution-analyzer/SKILL.md",
+      "title": "update_clash_status forges RESOLVED/APPROVED with empty notes and no re-run",
+      "description": "update_clash_status accepts any ClashStatus including RESOLVED/APPROVED, sets resolved_date, and only stores notes if non-empty. No model re-detection, assignee auth, or mandatory resolution evidence. Distinct from Toolkit bim-clash-detection FireRating/discipline issues.",
+      "impact": "Coordination dashboards show 100% resolution while hard MEP/structure clashes remain in the model, allowing construction to proceed on colliding systems.",
+      "attack_path": "1. Agent uses ClashResolutionAnalyzer.generate_report as coordination gate.\n2. Attacker update_clash_status(id, ClashStatus.APPROVED, notes='') for critical clashes.\n3. resolved_clashes increments; resolution_rate rises.\n4. Report published with clashes closed and no fix notes.",
+      "evidence": [
+        "2_DDC_Book/4.3-BIM-Validation-Pipeline/clash-resolution-analyzer/SKILL.md:297-324",
+        "2_DDC_Book/4.3-BIM-Validation-Pipeline/clash-resolution-analyzer/SKILL.md:348-360"
+      ],
+      "remediation": "Require non-empty notes + authenticated resolver; RESOLVED only after clash re-run clears; separate APPROVED for senior sign-off."
+    },
+    {
+      "severity": "medium",
+      "location": "5_DDC_Innovative/prefab-optimization/SKILL.md",
+      "title": "Overlength modules keep within_standard=True — only sets requires_permit",
+      "description": "calculate_transport_constraints sets within_standard=False for width/height violations but when length exceeds max_length it only sets requires_permit and transport_type='long_load', leaving within_standard=True.",
+      "impact": "Logistics gates that key off within_standard treat 20m modules as standard loads, skipping escorts/route surveys until roadside refusal.",
+      "attack_path": "1. Agent uses calculate_transport_constraints for factory shipping clearance.\n2. Module dimensions (20.0, 3.0, 3.0) exceed max_length=12.\n3. Result within_standard=True, transport_type=long_load.\n4. Downstream books standard trailer based on within_standard.",
+      "evidence": [
+        "5_DDC_Innovative/prefab-optimization/SKILL.md:57-88"
+      ],
+      "remediation": "Set within_standard=False whenever any dimension or weight exceeds standard limits; require escort for long_load as for wide_load."
+    },
+    {
+      "severity": "medium",
+      "location": "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md (+ gantt-chart, cwicr-report-generator, clash HTML)",
+      "title": "HTML reports interpolate project_name / IFC type / task / line-item fields without escaping",
+      "description": "generate_html_report and related HTML builders embed project_name, category, type_name, task.name, and cost line description/code via f-strings into HTML with no html.escape. Malicious IFC TypeName or forged project_name becomes active markup when the report is opened in a browser.",
+      "impact": "Stored XSS against PMs/estimators who open QTO/Gantt/cost HTML exports; can exfiltrate local report context or pivot if reports are hosted.",
+      "attack_path": "1. Attacker supplies IFC elements/types or project_name containing <img src=x onerror=…> / <script>.\n2. Victim agent generates HTML QTO/Gantt/cost/clash report.\n3. Victim opens the HTML file in a browser.\n4. Payload executes in the report document context.",
+      "evidence": [
+        "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md:361-442",
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/gantt-chart/SKILL.md:207-245",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-report-generator/SKILL.md:115-126",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-report-generator/SKILL.md:161-189"
+      ],
+      "remediation": "html.escape all untrusted strings before interpolation; prefer templating with autoescape; Content-Security-Policy if reports are served."
+    }
+  ],
+  "near_misses": [
+    "progress-monitoring-cv PPE/progress heuristics — advisory only, no compliance stamp (prior near-miss)",
+    "drone-site-survey volumes — no pay-app gate in skill",
+    "environmental-monitoring — TWA/current COMPLIANT already reported; record_batch swallow is soft",
+    "as-built approve/finalize empty — already reported empty FINAL",
+    "capacity-planning CONDITIONAL on ≤2 bottlenecks — soft recommendation, not a hard GO stamp",
+    "energy HVAC sized_capacity_tons double-applies safety_factor — sizing error, weak exploit chain",
+    "AssemblySequencer mutates dependency_graph in place — reliability bug",
+    "document-classification-nlp mis-route — advisory confidence, no authZ gate",
+    "portfolio-dashboard trusts input CPI/SPI/risk_score — display of caller metrics",
+    "Field punch ACCEPTED empty verified_by — pattern already covered under punch ACCEPTED/Closeout VERIFIED",
+    "No real hardcoded secrets / command injection / SSRF / pickle RCE in scoped Innovative targets this pass"
+  ],
+  "poc_result": "10/10 logic PoCs passed (resource overbook, floor skip, labor double-book, LOD ignore, prefab within_standard, XSS sink, crane double-book, delay claim forge, CO2 fillna, clash APPROVED forge)"
+}
