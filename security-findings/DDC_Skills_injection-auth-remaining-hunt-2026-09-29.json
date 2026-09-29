@@ -1,0 +1,105 @@
+{
+  "hunt": "injection-ssrf-rce-auth-secrets-remaining-priority-areas",
+  "date": "2026-09-29",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-finding-memory-a488",
+  "run": "https://cursor.com/agents/bc-95c78c8c-71c0-5e7c-a141-d51d9069a17a",
+  "result": "1 HIGH",
+  "skipped_already_reported": [
+    "n8n-workflow-automation BIM Change Detection executeCommand RCE + Postgres SQLi (injection hunt 2026-09-28 CRITICAL)",
+    "multi-agent-estimation unauth webhook (injection hunt HIGH)",
+    "voice-to-report Telegram no allowlist (injection hunt HIGH)",
+    "sql-query-builder unescaped SQL interpolation (injection hunt HIGH)",
+    "n8n-daily-report unauth webhook Procore/email (auth hunt 2026-09-27 HIGH)",
+    "n8n-photo-report unauth webhook Anthropic/Airtable (auth hunt 2026-09-27 HIGH)",
+    "etl-pipeline extract_from_api SSRF",
+    "erp-data-extractor generate_sql_query f-string SQLi",
+    "email-construction attachment open() \u2192 SMTP exfil",
+    "digital-twin-sync WebSocket missing auth",
+    "Telegram allowlists field-bot/pto/pm",
+    "ifc-qto-extraction webhook Execute Command model_path (prior reported)",
+    "csv-handler path traversal",
+    "material-tracking-iot MQTT unauth"
+  ],
+  "near_misses": [
+    {
+      "item": "safety-inspection-checklist Webhook finding.critical",
+      "why": "Skeletal: no path, no body field mapping, fixed recipient only \u2014 incomplete chain vs RFI template"
+    },
+    {
+      "item": "n8n-cost-estimation RvtExporter filePath cmdinj",
+      "why": "No remote trigger in skill; previously rejected"
+    },
+    {
+      "item": "n8n-workflow Revit\u2192Budget localFileTrigger xlsx\u2192email",
+      "why": "Requires FS write to watched folder; integrity-only, weaker than network webhook"
+    },
+    {
+      "item": "schema-validation unknown endpoint is_valid=True",
+      "why": "Illustrative @app.post; no listen/bind \u2014 incomplete"
+    },
+    {
+      "item": "defect-detection torch.load / ml-model-retrainer pickle.load",
+      "why": "Operator-supplied model path; no untrusted auto-load ingress"
+    },
+    {
+      "item": "CAD converters subprocess argv",
+      "why": "shell=False; no remote trigger"
+    },
+    {
+      "item": "weather/price/open-data/daily-report API clients",
+      "why": "Fixed allowlisted base URLs; location/lat-lon as params only \u2014 no SSRF"
+    },
+    {
+      "item": "email Subject CRLF header injection",
+      "why": "Python 3.12 email policy raises HeaderParseError \u2014 fails closed"
+    },
+    {
+      "item": "airflow-dag bash_command codegen",
+      "why": "Operator-controlled; previously rejected"
+    },
+    {
+      "item": "update_all_skills.py / publish_*.ps1",
+      "why": "No attacker reachability; no secrets; local publish only"
+    },
+    {
+      "item": "bim-visual-programming Excel\u2192Revit param update",
+      "why": "Dynamo IN[] operator session only \u2014 no remote ingress"
+    },
+    {
+      "item": "digital-twin MQTT sensors/#",
+      "why": "Subsumed by already-reported twin sync unauth class"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "HIGH",
+      "category": "Authentication & Authorization / Integrity",
+      "location": "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md",
+      "title": "Unauthenticated RFI notification webhook forges official email and Telegram RFI alerts to company contacts",
+      "attacker": "Any network party who can POST to the deployed n8n webhook path /rfi-notification",
+      "controls": "Full webhook JSON: rfi_number, subject, assigned_to, date_required, priority",
+      "reach": "Skill documents trigger type=webhook path=/rfi-notification with only path+method semantics \u2014 no authentication, Header Auth, HMAC, JWT, or allowlist anywhere in the template",
+      "gain": "1) Look up company Contacts in Google Sheets by attacker-chosen assigned_to role. 2) Send forged official RFI emails to the resolved contact email via the configured Email node. 3) Send forged Telegram RFI alerts (with portal deep-link) to the contact telegram_id. Enables spear-phishing and process disruption using company notification channels.",
+      "attack_chain": [
+        "Operator/agent deploys the RFI Notification Workflow with Google Sheets Contacts, Email, and Telegram credentials configured.",
+        "Attacker discovers the n8n host and POSTs to /webhook/rfi-notification (or Cloud webhook URL for that path).",
+        "Webhook accepts body with no auth check; parse_rfi copies attacker fields into the item.",
+        "get_recipient filters Contacts where role equals attacker assigned_to (e.g. Architect / Project Manager).",
+        "send_email delivers forged [RFI \u2026] subject/body to the looked-up corporate email.",
+        "send_telegram delivers forged RFI alert + portal link to the looked-up telegram_id."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:534-536 (webhook trigger path /rfi-notification, no auth)",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:539-548 (attacker-controlled rfi_number/subject/assigned_to/priority/date_required)",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:550-554 (Google Sheets Contacts lookup by assigned_to)",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:556-568 (Email to resolved contact with forged RFI content)",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:570-582 (Telegram sendMessage with forged RFI + portal link)"
+      ],
+      "mitigations_checked": "No authentication/hmac/headerAuth/jwt/secret/allowlist strings in the n8n Integration section. Recipients are resolved from Sheets (not raw webhook email), but any valid role still targets real staff with attacker-controlled RFI content.",
+      "remediation": "Require webhook Header Auth or HMAC. Bind assigned_to to a server-side role allowlist. Rate-limit notifications. Prefer signing internal events from the RFI system rather than accepting anonymous POSTs. Quarantine/human-confirm before emailing RFIs from webhook ingress.",
+      "already_reported": false,
+      "notes": "Distinct from already-reported n8n-daily-report and n8n-photo-report unauth webhooks (different skill/path/impact). Distinct from Telegram bot allowlist findings (this is HTTP webhook \u2192 Sheets \u2192 Email/Telegram)."
+    }
+  ]
+}
