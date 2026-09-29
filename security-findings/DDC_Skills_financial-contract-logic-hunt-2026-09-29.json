@@ -1,0 +1,219 @@
+{
+  "hunt": "financial-contract-payment-retention-logic",
+  "date": "2026-09-29",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-finding-memory-a488",
+  "run": "https://cursor.com/agents/bc-41e7b46d-b7eb-57ff-8f2e-7434e4e1dcad",
+  "result": "5 CRITICAL + 9 HIGH validated NEW findings",
+  "poc": "security-findings/poc_financial_contract_logic_2026-09-29.py",
+  "poc_result": "15 passed, 0 failed",
+  "skipped_already_reported": [
+    "lien-waiver convert_to_unconditional overwrites waiver_id",
+    "lien-waiver negative retainage_rate inflates amount_approved",
+    "change-order-processor add_cost_item after APPROVED",
+    "cwicr-value-engineering $0 unknown items",
+    "open-construction-estimate inflation/overwrite",
+    "payment-application materials-stored re-billing double pay",
+    "payment-application add_change_order forges SOV without CO approval",
+    "Curated budget-variance-analyzer use_contingency no pool erases overrun"
+  ],
+  "near_misses": [
+    {
+      "item": "cashflow-forecaster / cash-flow-forecaster negative retainage_rate",
+      "why": "Monthly income inflates but end retainage release also goes negative; lifetime net largely cancels — weaker complete cash-theft chain than pay-app retainage"
+    },
+    {
+      "item": "contract-clause-extractor regex extraction",
+      "why": "No exec/SQL/path sink; misclassification only"
+    },
+    {
+      "item": "export_application/export_report output_path",
+      "why": "Caller-supplied path with no remote ingress; operator-controlled write only"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md",
+      "title": "approve_change_order forges arbitrary APPROVED amount from DRAFT with $0 proposed — revised contract +$5M",
+      "description": "ChangeOrderManager.approve_change_order never checks status (DRAFT/SUBMITTED/REJECTED) and trusts caller-supplied approved_amount. An empty DRAFT CO with proposed_amount=0 can be stamped APPROVED for any dollar/time value. get_summary() then adds approved_amount into total_approved and revised_contract.",
+      "impact": "Attacker/agent forges a $5M executed change on a $2M contract (revised_contract=$7M) with no pricing, review, or line items. Downstream pay apps/SOV imports that trust revised_contract pay out inflated contract value.",
+      "attack_path": "1. Agent runs ChangeOrderManager as contract change system of record.\n2. Attacker creates CO via create_change_order (status=DRAFT, proposed_amount=0).\n3. Attacker calls approve_change_order(co_id, approved_amount=5000000, approved_time=90) — no status gate.\n4. get_summary()/generate_log show Approved Changes $5M and Revised Contract original+$5M.\n5. Subsequent billing/CO logs treat the forged approval as authoritative.",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:274-286",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:341-368"
+      ],
+      "remediation": "Require status in SUBMITTED/UNDER_REVIEW/NEGOTIATING before approve; bind approved_amount to proposed_amount (±tolerance) or require dual control; block re-approve of already APPROVED/EXECUTED/REJECTED; log approver identity with non-spoofable auth."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+      "title": "approve_change_order skips PENDING_REVIEW/PENDING_APPROVAL — DRAFT→APPROVED status-machine bypass",
+      "description": "submit_for_review and submit_for_approval enforce DRAFT→PENDING_REVIEW→PENDING_APPROVAL, but approve_change_order has no status precondition. Any DRAFT (or REJECTED) CO can jump straight to APPROVED; get_summary includes total_cost in approved_changes/current_contract.",
+      "impact": "PoC: $100×$5000 labor +15% markup (~$695k) approved from DRAFT without reviewer step; current_contract jumps $1M→$1.70M. Distinct from already-reported add_cost_item-after-APPROVED (this bypasses the gate before approval).",
+      "attack_path": "1. create_change_order leaves status=DRAFT.\n2. add_cost_item loads inflated quantities/unit costs.\n3. Skip submit_for_review/submit_for_approval.\n4. approve_change_order(approver='attacker') sets APPROVED.\n5. get_summary() reports approved_changes and inflated current_contract.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:222-240",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:252-270",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:303-311"
+      ],
+      "remediation": "In approve_change_order require status==PENDING_APPROVAL (and reject REJECTED/APPROVED). Keep add_cost_item blocked once past DRAFT. Require authenticated approver role."
+    },
+    {
+      "severity": "critical",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "set_retainage_rates(negative) turns retainage into a credit — $500k work yields $750k net due",
+      "description": "set_retainage_rates assigns work_rate/stored_rate with no range check. _calculate_totals multiplies completed work by the rate, so a negative rate produces negative retainage and increases net_amount_due above total_completed.",
+      "impact": "PoC: work_rate=-0.50 on $500k completed → retainage=-$250k → net_amount_due=$750k (150% of earned). Owner pays a retainage 'credit' instead of holding funds.",
+      "attack_path": "1. Processor initialized for project with SOV.\n2. Attacker calls set_retainage_rates(-0.50).\n3. create_pay_app + update_line_item bills full scheduled value.\n4. _calculate_totals computes negative retainage; net_amount_due = completed - (negative retainage).\n5. approve_pay_app/record_payment/G702 pay the inflated net.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:154-157",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:308-321"
+      ],
+      "remediation": "Clamp retainage rates to [0, 1] (or contract max). Reject negative stored/work rates. Assert retainage >= 0 and net_amount_due <= total_completed in _calculate_totals."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "approve_pay_app trusts caller approved_amount and has no status gate — DRAFT→APPROVED $9M forge",
+      "description": "approve_pay_app never requires SUBMITTED/UNDER_REVIEW and sets approved_amount to the caller value whenever it is truthy, ignoring net_amount_due. record_payment similarly lacks an APPROVED precondition (DRAFT with approved_amount=0 marks PAID for any paid_amount>=0).",
+      "impact": "PoC: $10k progress (net=$9k) approved for $9,000,000 from DRAFT. Payment systems that disburse approved_amount overpay by orders of magnitude.",
+      "attack_path": "1. create_pay_app + update_line_item for small progress.\n2. Skip submit_pay_app.\n3. approve_pay_app(app, approved_amount=9000000) from DRAFT.\n4. Downstream pays approved_amount or G702 current due after further mutation.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:335-344",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:348-361"
+      ],
+      "remediation": "Require status in SUBMITTED/UNDER_REVIEW before approve. Default approved_amount to net_amount_due; allow reductions only with recorded reason; reject increases above net. Require APPROVED before record_payment."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "update_line_item allows unbounded overbilling and mutates totals after APPROVED",
+      "description": "update_line_item writes current_completed/materials_stored with no cap to scheduled_value and no status lock. Billing can exceed 100% SOV (balance_to_finish goes negative). After APPROVED, the same call recalculates net_amount_due and G702 current_payment_due while approved_amount stays frozen — forms and nets diverge upward.",
+      "impact": "PoC: $100k SOV billed at $250k → net=$225k. Second PoC: approve at $9k then update to 100% → G702 current_payment_due=$90k while still APPROVED.",
+      "attack_path": "1. create_pay_app for SOV line scheduled_value=100000.\n2. update_line_item(..., current_completed=250000) — no ceiling.\n3. Or: submit+approve small amount, then update_line_item to full/over value.\n4. generate_g702 emits inflated current_payment_due under APPROVED status.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:238-260",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:287-321"
+      ],
+      "remediation": "Reject updates when status not DRAFT. Cap previous+current+stored <= scheduled_value (unless change order adjusted SOV). Freeze line items on APPROVED/PAID."
+    },
+    {
+      "severity": "critical",
+      "location": "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md",
+      "title": "release_retention accepts negative amount — inflate balance_held then pay out $70k on $20k retained",
+      "description": "release_retention only caps amount when amount > balance_held. Negative amounts pass, subtract from total_released, and add to balance_held. A follow-up positive release then pays the inflated balance. Cash systems that disburse each positive release.amount overpay retainage.",
+      "impact": "PoC: $20k held → release(-50000) → held=$70k → release($70k). Positive payouts sum to $70k against $20k actually retained.",
+      "attack_path": "1. record_billing creates $20k retention on $200k gross @10%.\n2. release_retention(..., amount=-50000) — no lower bound.\n3. balance_held becomes $70k; total_released decreases.\n4. release_retention(..., amount=70000) records a $70k positive release paid to the sub.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:178-213"
+      ],
+      "remediation": "Require amount > 0 and amount <= balance_held. Reject negative/NaN. Recompute balance_held as total_retained - total_released after each mutation; refuse release if balance would go inconsistent."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md",
+      "title": "release_retention ignores check_release_conditions and lien_waivers/consent flags",
+      "description": "check_release_conditions reports ready_for_release=False until punch list, final lien waiver, surety consent, as-builts, etc. release_retention never calls that check and stores lien_waivers_received/consent_of_surety without gating. Empty approved_by is accepted.",
+      "impact": "Full or partial retainage can be released while documentation and lien/surety conditions remain unmet — converting held contract security into cash prematurely.",
+      "attack_path": "1. record_billing builds balance_held.\n2. check_release_conditions → ready_for_release=False, many missing_conditions.\n3. release_retention(..., lien_waivers=False, consent_of_surety=False, approved_by='') still releases cash.\n4. Sub receives retention without closeout/lien protection.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:178-213",
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:250-280"
+      ],
+      "remediation": "Gate release_retention on check_release_conditions()['ready_for_release'] (or explicit waiver of named conditions with audit). Require lien_waivers_received and consent_of_surety true for final release. Require authenticated approver."
+    },
+    {
+      "severity": "critical",
+      "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+      "title": "record_invoice uncapped vs contract and record_payment skips APPROVED — $450k PAID on $100k subcontract",
+      "description": "record_invoice never compares gross_amount to contract_amount/balance_remaining. record_payment sets PAID without requiring APPROVED (approve_payment is optional). total_paid sums PAID amounts, so over-invoicing becomes overpayment.",
+      "impact": "PoC: $500k gross on $100k contract → net $450k at 10% retention → record_payment → status=PAID, total_paid=$450k (4.5× contract).",
+      "attack_path": "1. add_subcontractor(contract_amount=100000).\n2. record_invoice(gross_amount=500000) — no cap.\n3. Skip approve_payment.\n4. record_payment(check_number=...) marks PAID.\n5. get_summary/export show total_paid far above contract.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:125-145",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:149-166",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:88-97"
+      ],
+      "remediation": "Reject invoices where gross+prior > contract_amount (or committed). Require status==APPROVED before record_payment. Optionally require lien waiver before PAID."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+      "title": "Negative retention_percent inflates net payment to 1.5× gross",
+      "description": "add_subcontractor accepts any retention_percent. record_invoice computes retention = gross * retention_percent and net = gross - retention. A negative percent yields negative retention_held and net > gross.",
+      "impact": "PoC: retention_percent=-0.5 on $100k gross → retention_held=-$50k, amount=$150k net due.",
+      "attack_path": "1. add_subcontractor(..., retention_percent=-0.5).\n2. record_invoice(gross_amount=100000).\n3. approve/record_payment pays $150k for $100k invoice.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:108-120",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:133-144"
+      ],
+      "remediation": "Clamp retention_percent to [0, 1]. Assert retention_held >= 0 and net_amount <= gross_amount."
+    },
+    {
+      "severity": "critical",
+      "location": "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md",
+      "title": "record_settlement from DRAFT forges SETTLED award with arbitrary amount/time",
+      "description": "record_settlement does not require SUBMITTED/NEGOTIATING and does not validate amount_awarded against cost_claimed or notice compliance. Any DRAFT claim becomes SETTLED with attacker-chosen dollars and days.",
+      "impact": "PoC: create_claim DRAFT → record_settlement(time=120, amount=2500000) → SETTLED $2.5M / 120 days with no evidence package or notice.",
+      "attack_path": "1. create_claim leaves status=DRAFT.\n2. Skip notices, evidence, damages, submit_claim.\n3. record_settlement(claim_id, 120, 2500000).\n4. generate_claim_package/status reports show settled award used for change orders/time extensions.",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:346-358"
+      ],
+      "remediation": "Allow settlement only from SUBMITTED/NEGOTIATING. Cap amount_awarded <= cost_claimed unless executive override. Require notice deadlines satisfied or documented waiver."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md",
+      "title": "add_damage_calculation after SUBMITTED silently inflates cost_claimed",
+      "description": "add_damage_calculation has no status lock. After submit_claim, further damage lines still append and recompute cost_claimed, so the 'submitted' claim total grows without resubmission.",
+      "impact": "PoC: submit with $100k claimed → add $900k phantom damage → cost_claimed=$1M while status remains SUBMITTED.",
+      "attack_path": "1. add_damage_calculation($100k); submit_claim.\n2. add_damage_calculation($900k) still allowed.\n3. Packages/settlement talks use inflated cost_claimed under SUBMITTED status.",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:266-285",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:337-343"
+      ],
+      "remediation": "Freeze damage_calculations once status is SUBMITTED/SETTLED/WITHDRAWN; require reopen-to-DRAFT workflow to amend."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "title": "Negative retainage_percent credits the pay app — $500k work → $750k current_payment_due",
+      "description": "Constructor sets retainage_percent from caller with no bounds. retainage_amount = total_completed_to_date * retainage_percent; negative percent makes retainage_held negative and current_payment_due exceed earned work. Parallel class to curated processor retainage bug; different skill/API.",
+      "impact": "PoC: retainage=-0.5, work=$500k → retainage_held=-$250k, current_payment_due=$750k.",
+      "attack_path": "1. PaymentApplicationGenerator(..., retainage=-0.5).\n2. setup_sov + create_application with full work progress.\n3. calculate_payment_due / generate_g702 emit inflated payment.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:130-136",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:110-113",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-246"
+      ],
+      "remediation": "Clamp retainage to [0, 1]; assert retainage_amount >= 0 in calculate_payment_due."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/budget-variance-analyzer/SKILL.md",
+      "title": "adjust_budget has no approval gate — unauthenticated +$100k revision erases critical overrun",
+      "description": "adjust_budget adds any amount to current_budget with only a notes string. No VarianceRecord approval, no CONTINGENCY pool check (distinct from already-reported curated use_contingency). calculate_summary then reports healthier variance / contingency_used delta.",
+      "impact": "PoC: item budget $100k / actual $180k / forecast $180k (variance=-$80k CRITICAL) → adjust_budget(+100000) → variance=+$20k UNDER_BUDGET appearance.",
+      "attack_path": "1. Costs update shows CRITICAL overrun.\n2. Attacker calls adjust_budget(code, 100000, 'fake approved change').\n3. Reports/export show on-track variance masking the overrun.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/budget-variance-analyzer/SKILL.md:201-207",
+        "1_DDC_Toolkit/Cost-Management/budget-variance-analyzer/SKILL.md:245-286"
+      ],
+      "remediation": "Require linked approved change-order id / VarianceRecord.approved before budget increases. Cap adjustments to remaining contingency pool. Audit trail with authenticator."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md",
+      "title": "can_release_payment treats RECEIVED (even empty file_path) as verified — skips VERIFIED state",
+      "description": "receive_waiver sets status=RECEIVED for any file_path including empty string and does not require verify_waiver. can_release_payment allows release when waiver status is RECEIVED or VERIFIED and returns reason 'All waivers verified'. Distinct from already-reported convert_to_unconditional waiver_id overwrite.",
+      "impact": "PoC: can_release_payment False → receive_waiver(id, file_path='') → can_release True for $90k approved amount without VERIFIED and without a real waiver document.",
+      "attack_path": "1. create_payment_application creates REQUESTED conditional waiver.\n2. Attacker calls receive_waiver(waiver_id, file_path='').\n3. _check_pay_app_waivers marks waivers_complete.\n4. can_release_payment returns can_release=True with amount=amount_approved.\n5. Payment released without verified lien waiver on file.",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:177-188",
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:340-364"
+      ],
+      "remediation": "Require non-empty stored artifact hash/path. Gate can_release_payment on VERIFIED only. Separate receive vs verify steps with role checks."
+    }
+  ]
+}
