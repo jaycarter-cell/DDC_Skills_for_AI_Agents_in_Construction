@@ -1,0 +1,156 @@
+{
+  "hunt": "innovative-iot-twin-n8n-remaining-logic-2026-09-30",
+  "date": "2026-09-30",
+  "run": "https://cursor.com/agents/bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+  "branch": "cursor/at-rest-security-review-eb57",
+  "scope": [
+    "5_DDC_Innovative/digital-twin-sync",
+    "5_DDC_Innovative/equipment-telematics",
+    "5_DDC_Innovative/sensor-data-aggregator",
+    "5_DDC_Innovative/material-tracking-iot",
+    "5_DDC_Innovative/n8n-workflow-automation",
+    "5_DDC_Innovative/enterprise-risk-aggregator",
+    "5_DDC_Innovative/portfolio-dashboard",
+    "5_DDC_Innovative/permit-tracking-automation",
+    "5_DDC_Innovative/as-built-documentation",
+    "5_DDC_Innovative/change-order-analysis",
+    "5_DDC_Innovative/contractor-matching-ai",
+    "5_DDC_Innovative/environmental-monitoring",
+    "5_DDC_Innovative/safety-compliance-checker"
+  ],
+  "result": "1 CRITICAL + 5 HIGH validated NEW findings",
+  "poc": "security-findings/poc_innovative_logic_remaining_2026-09-30.py",
+  "poc_result": "7 passed, 0 failed",
+  "skipped_already_reported": [
+    "digital-twin TwinSynchronizer unauthenticated WebSocket update/status_update",
+    "n8n-workflow-automation executeCommand fileName command injection + SQL INSERT injection",
+    "material-tracking-iot unauthenticated MQTT ingestion",
+    "material-tracking-iot storage name-substring skip",
+    "material-tracking-iot / equipment geofence invert",
+    "equipment-telematics CRITICAL coolant never leaves OPERATING",
+    "sensor-data-aggregator strain/tilt/pressure empty defaults; SUSPECT spike skips alerts",
+    "permit-tracking is_valid ignores missing docs / null expiry",
+    "permit-tracking update_status forge ISSUED",
+    "safety-compliance fall any() whole-crew COMPLIANT; OSHA excav/scaffold/elec never evaluated; PPE height skip / forged compliant / self-reported activity",
+    "environmental TWA / current COMPLIANT / fake readings",
+    "as-built empty FINAL",
+    "contractor-matching BidEvaluator underbid Strongly Recommended; missing valid_until → date.max",
+    "change-order-analysis joblib.load RCE (bundled with risk-assessment-ml)"
+  ],
+  "near_misses": [
+    "as-built PHOTO/empty file FINAL satisfying DRAWING/WARRANTY by requirement_id only — subsumed by already-reported empty FINAL completeness gate",
+    "enterprise-risk probability=0 conceals $50M impact as LOW / probability>1 inflates VaR — advisory portfolio scoring without payment/safety gate",
+    "sensor-data / equipment ingest_* library APIs without network listener (prior auth hunt near-miss)",
+    "n8n Revit→Budget http://api.construction-prices.com — illustrative hardcoded host, no attacker-controlled SSRF sink beyond already-reported n8n patterns"
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "5_DDC_Innovative/change-order-analysis/SKILL.md",
+      "title": "approve() stamps APPROVED from DRAFT; update_cost mutates amount after approval; negatives and DRAFT rows feed total_cost_impact",
+      "description": "ChangeOrderManager.approve() never requires SUBMITTED/UNDER_REVIEW and writes APPROVED from any status including DRAFT using an unconstrained approver string. update_cost() has no status freeze, so the priced CostBreakdown can be replaced after approval. CostBreakdown.total sums signed floats with no floor, so negative labor/materials create credits. get_summary() sums cost_breakdown.total for every CO regardless of status, so DRAFT and negative APPROVED rows become the official total_cost_impact / cost_impact_pct. Distinct from already-reported change-order-processor / change-order-manager approve_change_order paths and from joblib.load in this same skill.",
+      "impact": "A colluding contractor or agent can mint an APPROVED $5.5M change from a $50k DRAFT (post-approve mutate) and a −$2M credit CO, publishing a forged $3.5M net impact on a $10M contract that downstream billing and owner reports will treat as approved.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent uses change-order-analysis ChangeOrderManager as the live CO register.\n2. Attacker create_change_order (DRAFT) with a small or empty cost.\n3. Attacker approve(co_id, 'Owner') without submit_for_approval.\n4. Attacker update_cost(..., CostBreakdown(materials=5_000_000, profit=500_000)).\n5. Optionally approve a second DRAFT with labor=-2_000_000.\n6. get_summary() reports total_cost_impact reflecting the mutated APPROVED and negative rows.",
+      "evidence": [
+        "5_DDC_Innovative/change-order-analysis/SKILL.md:111-122",
+        "5_DDC_Innovative/change-order-analysis/SKILL.md:205-210",
+        "5_DDC_Innovative/change-order-analysis/SKILL.md:233-251",
+        "5_DDC_Innovative/change-order-analysis/SKILL.md:253-286"
+      ],
+      "remediation": "Allow approve only from SUBMITTED/UNDER_REVIEW. Freeze cost_breakdown after approval (or require re-submit). Reject negative component amounts unless an explicit credit type is set. Sum only APPROVED/IMPLEMENTED COs in get_summary; bind approver to an authenticated owner/CM role.",
+      "poc_video_notes": "Video not feasible — Python skill template with no running web UI. Local PoC: DRAFT→APPROVED then mutate to $5.5M; −$2M credit APPROVED; summary total_cost_impact=$3.5M."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/digital-twin-sync/SKILL.md",
+      "title": "ScheduleTwinIntegrator.update_activity_progress stamps ElementStatus.COMPLETED for percent_complete >= 100 (including values > 100) with no field verification",
+      "description": "update_activity_progress stores caller percent_complete with no 0–100 bound and calls _determine_status, which returns COMPLETED for any percent >= 100. Linked twin elements are updated via twin.update_status(..., DataSource.SCHEDULE) with no quantity, inspection, or photo gate. Distinct from the already-reported unauthenticated TwinSynchronizer WebSocket update/status_update path: this is the schedule-progress logic forge even for an authorized caller.",
+      "impact": "Structural elements (beams/columns) appear COMPLETED in the digital twin used for progress billing and handover while work is unfinished. percent_complete=999 still stamps COMPLETED.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent runs DigitalTwinCore + ScheduleTwinIntegrator as the live twin.\n2. Schedule links BEAM-1/COL-1 to erect-steel activity.\n3. Attacker update_activity_progress(activity_id, 100) or 999 with no field evidence.\n4. Element status becomes COMPLETED for all linked elements; project snapshot shows completed counts.",
+      "evidence": [
+        "5_DDC_Innovative/digital-twin-sync/SKILL.md:524-540",
+        "5_DDC_Innovative/digital-twin-sync/SKILL.md:542-549",
+        "5_DDC_Innovative/digital-twin-sync/SKILL.md:274-288"
+      ],
+      "remediation": "Clamp percent_complete to [0, 100]. Require field verification or quantity complete before COMPLETED. Do not map percent>100 to COMPLETED. Separate schedule forecast from certified as-built status.",
+      "poc_video_notes": "Video not feasible. Local PoC: percent=100 and percent=999 both set BEAM-1/COL-1 to COMPLETED."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/equipment-telematics/SKILL.md",
+      "title": "Sparse forged OPERATING telematics invent billable utilization hours while engine_hours stay flat",
+      "description": "ingest_reading derives OPERATING solely from engine_rpm>=800 and load_percentage>=10 with no device auth, monotonic engine_hours check, or max inter-sample gap. calculate_utilization attributes the entire interval between consecutive readings to the previous status, so two OPERATING pings 10 hours apart bill 10 operating hours even when engine_hours is unchanged. Distinct from the already-reported CRITICAL coolant fault that never leaves OPERATING (safety lockout): this is payment/utilization fraud via forged status intervals.",
+      "impact": "Rental invoices and fleet utilization KPIs can charge a full shift of crane/excavator time from two spoofed high-RPM samples while the hour meter did not advance — direct payment-state forgery from telematics.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent uses EquipmentTelematics.calculate_utilization for rental/owner billing.\n2. Attacker (or spoofed gateway) ingest_reading twice 10h apart with rpm=1800, load=80, same engine_hours=100.\n3. calculate_utilization returns operating_hours=10.\n4. Billing/utilization report treats 10h as worked time.",
+      "evidence": [
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:208-249",
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:216-222",
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:372-422"
+      ],
+      "remediation": "Cap interval credited per sample; require engine_hours to increase with OPERATING time; reject non-monotonic hour meters; authenticate device identity; treat gaps above a threshold as unknown/off, not OPERATING.",
+      "poc_video_notes": "Video not feasible. Local PoC: two OPERATING pings 10h apart with flat engine_hours → operating_hours=10.0."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/portfolio-dashboard/SKILL.md",
+      "title": "import_projects trusts caller cpi/spi so health stays GREEN and on_budget_pct=100 while actual_cost exceeds budget by millions",
+      "description": "import_projects copies cpi and spi from input with defaults of 1.0 and never recomputes them from earned value / actual_cost / percent_complete. ProjectMetrics.health and calculate_portfolio_summary on_budget_pct / on_schedule_pct key solely off those trusted indexes. cost_variance is computed as budget-actual_cost but does not affect health. A project with $8M actual on a $5M budget at 20% complete remains GREEN when cpi=spi=1.0.",
+      "impact": "Executive portfolio dashboards and lender packs show 100% on-budget / GREEN while the job is already $3M over — concealing overruns that drive contingency and cash decisions.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent builds PortfolioDashboard from project feeds.\n2. Attacker or compromised feed supplies actual_cost=8e6, budget=5e6, percent_complete=20, cpi=1.0, spi=1.0.\n3. health property returns GREEN; on_budget_pct=100.\n4. Portfolio summary publishes a healthy portfolio despite −$3M cost_variance.",
+      "evidence": [
+        "5_DDC_Innovative/portfolio-dashboard/SKILL.md:95-109",
+        "5_DDC_Innovative/portfolio-dashboard/SKILL.md:170-205",
+        "5_DDC_Innovative/portfolio-dashboard/SKILL.md:212-238"
+      ],
+      "remediation": "Derive CPI/SPI from EV/AC/PV (or refuse caller-supplied indexes). Fail health closed when actual_cost/budget and percent_complete imply CPI below thresholds. Include cost_variance in health.",
+      "poc_video_notes": "Video not feasible. Local PoC: $8M/$5M at 20% with cpi=1.0 → GREEN, on_budget_pct=100, cost_variance=-3000000."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/permit-tracking-automation/SKILL.md",
+      "title": "Phantom add_document paths satisfy submit_application; inspections can be scheduled and passed without ISSUED",
+      "description": "add_document stores filename/file_path with no existence or content check. get_document_status marks complete when submitted document_type strings cover mandatory required types. submit_application only gates on that type-set completeness. schedule_inspection and record_inspection_result never require PermitStatus.ISSUED/APPROVED, so a foundation inspection can be recorded as pass while the application is only SUBMITTED. Distinct from already-reported is_valid ignoring missing docs/null expiry and update_status forging ISSUED.",
+      "impact": "Building permit applications enter the official SUBMITTED pipeline with nonexistent plans, and foundation/rough inspections can be stamped pass before a permit is issued — authorizing work that AHJ process was supposed to block.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent uses PermitTracker as the permit register.\n2. Attacker add_document(..., file_path='/nonexistent/site_plan.pdf') for each required type.\n3. submit_application succeeds (types present; files missing).\n4. schedule_inspection + record_inspection_result(..., 'pass') while status is still SUBMITTED (never ISSUED).",
+      "evidence": [
+        "5_DDC_Innovative/permit-tracking-automation/SKILL.md:218-228",
+        "5_DDC_Innovative/permit-tracking-automation/SKILL.md:313-326",
+        "5_DDC_Innovative/permit-tracking-automation/SKILL.md:382-403",
+        "5_DDC_Innovative/permit-tracking-automation/SKILL.md:405-439"
+      ],
+      "remediation": "Verify file exists and meets size/hash/type before counting a document submitted. Require ISSUED (or APPROVED) before scheduling inspections. Reject inspection pass without linked permit number and fee payment.",
+      "poc_video_notes": "Video not feasible. Local PoC: nonexistent paths → submit success; foundation insp result=pass while status=SUBMITTED."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/material-tracking-iot/SKILL.md",
+      "title": "record_delivery accepts negative and unbounded quantities, inventing or erasing on-hand stock",
+      "description": "record_delivery does material.quantity += quantity with no quantity > 0 check, no PO match, and no upper bound, then forces status=DELIVERED. A negative delivery silently depletes inventory; a large positive invents stock. Distinct from already-reported unauthenticated MQTT spoofing and from storage checks that skip when material-type substrings are absent from the name.",
+      "impact": "Colluding receiving can erase 50 TON of steel from the ledger or invent 500 TON as DELIVERED, poisoning procurement, pour gates, and theft detection that trust IoT inventory.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-58466e92-7f0a-5970-a44d-34e7ed8fc97c",
+      "attack_path": "1. Agent uses MaterialTrackingSystem as site inventory.\n2. Register 100 TON steel.\n3. record_delivery(..., quantity=-50) → on-hand 50.\n4. record_delivery(..., quantity=500) → on-hand 550 DELIVERED with no PO.",
+      "evidence": [
+        "5_DDC_Innovative/material-tracking-iot/SKILL.md:392-417"
+      ],
+      "remediation": "Require quantity > 0; cap cumulative deliveries to PO quantity; link deliveries to purchase orders; use a separate adjust/write-off API with authorization for decreases.",
+      "poc_video_notes": "Video not feasible. Local PoC: 100 → −50 → 50; +500 → 550 DELIVERED."
+    }
+  ]
+}
