@@ -1,0 +1,167 @@
+{
+  "hunt": "5_DDC_Innovative remaining business-logic / injection (focus list)",
+  "date": "2026-10-01",
+  "branch": "cursor/vulnerability-findings-management-2de3",
+  "skipped_already_reported": [
+    "change-order-analysis approve() from DRAFT + post-approve cost mutation",
+    "digital-twin-sync percent>=100 COMPLETED",
+    "equipment-telematics sparse OPERATING pings invent hours",
+    "portfolio-dashboard trusted CPI/SPI GREEN",
+    "permit-tracking phantom docs + inspection without ISSUED",
+    "material-tracking-iot negative/unbounded record_delivery",
+    "contractor-matching underbid",
+    "as-built empty FINAL",
+    "sensor defaults",
+    "env TWA",
+    "safety fall",
+    "WS/MQTT/n8n inject",
+    "resource-pool-optimizer _get_availability max() overbook (CRITICAL prior)",
+    "site-logistics crane schedule never checked (HIGH prior)",
+    "prefab overlength within_standard (MEDIUM prior)"
+  ],
+  "findings": [
+    {
+      "id": "INV-01",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+      "title": "allocate_storage never persists zone.current_usage — unlimited overfill + false empty utilization",
+      "description": "StorageOptimizer.allocate_storage copies SiteZone.current_usage into a local zone_usage dict, increments only that local dict, and never writes back to zone.current_usage. get_storage_utilization reads zone.current_usage, so every batch restarts from 0 used. Distinct from already-reported crane-schedule soft check.",
+      "impact": "Contractor/logistics caller can assign multiples of laydown capacity (e.g. 300 TON into 100 TON zone). Utilization reports stay 0%/normal, hiding overload that drives congestion, unsafe stacking, and false capacity for deliveries.",
+      "attack_path": [
+        "1) Create STORAGE zone capacity=100, current_usage=0",
+        "2) Call allocate_storage([{material_id:M1, quantity:100, ...}]) — assigned",
+        "3) Call allocate_storage again with M2 quantity=100 — assigned again because current_usage still 0",
+        "4) Repeat; get_storage_utilization shows used=0, utilization_pct=0, status=normal"
+      ],
+      "evidence": ["405:421", "453:468"],
+      "remediation": "After allocation, persist zone.current_usage += quantity (and store assignments). Reject materials when zone.current_usage + quantity > capacity. Make get_storage_utilization derive used from persisted usage or assignments."
+    },
+    {
+      "id": "INV-02",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/sensor-data-aggregator/SKILL.md",
+      "title": "Out-of-range readings marked SUSPECT skip all threshold alerts",
+      "description": "ingest_reading validates quality via min/max; values outside physical limits become DataQuality.SUSPECT. Threshold/critical checks run only when quality == GOOD. Beyond already-reported empty-default thresholds: extreme dangerous readings above max suppress safety alerts entirely.",
+      "impact": "Compromised or malicious sensor feed can push lethal/out-of-range gas, temperature, or structural values that never create WARNING/CRITICAL alerts — the worst readings are the ones silenced.",
+      "attack_path": [
+        "1) Register sensor with thresholds {min:0, max:100, warning:25, critical:50}",
+        "2) Ingest value=60 → GOOD → CRITICAL alert (control)",
+        "3) Ingest value=500 (> max) → SUSPECT → _check_thresholds skipped → alerts stay empty"
+      ],
+      "evidence": ["175:193", "213:230", "232:239"],
+      "remediation": "Always evaluate warning/critical thresholds regardless of quality; treat SUSPECT as an additional alert class; do not let max-bound failure suppress exceedance detection."
+    },
+    {
+      "id": "INV-03",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/environmental-monitoring/SKILL.md",
+      "title": "WARNING alert blocks THRESHOLD_EXCEEDANCE for one hour",
+      "description": "_create_alert returns early if any unresolved alert for the same station/parameter exists within 3600s — including WARNING. A reading at ≥80% of limit creates WARNING; a later hard exceedance is dropped. Distinct from already-reported TWA averaging gaps.",
+      "impact": "Attacker or noisy sensor can seed a warning-level reading, then OSHA/ISO hard exceedances within the hour produce no EXCEEDANCE alert — compliance dashboards understate regulatory breach.",
+      "attack_path": [
+        "1) record_reading noise=70 on 85 dBA instantaneous limit (≥80% → WARNING)",
+        "2) record_reading noise=120 (hard exceedance)",
+        "3) recent_alerts gate returns; alerts list still only WARNING at 70"
+      ],
+      "evidence": ["261:270", "286:298", "300:316"],
+      "remediation": "Allow severity escalation (WARNING→EXCEEDANCE); key dedupe on alert_type+severity; never let a weaker alert suppress a stronger one."
+    },
+    {
+      "id": "INV-04",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/capacity-planning/SKILL.md",
+      "title": "add_staff accepts unbounded capacity — forge GO on can_pursue_project",
+      "description": "add_staff stores attacker-controlled capacity with no upper bound or role check. get_capacity_at_date sums capacity into available FTE; can_pursue_project compares needs vs (capacity - demand) and emits 'GO - Sufficient capacity'.",
+      "impact": "Staffing/pursuit caller invents hundreds of phantom FTEs so a $100M pursuit that should CAUTION becomes GO — drives understaffed bid/commit decisions.",
+      "attack_path": [
+        "1) Honest pool (1 PM + 1 superintendent) → can_pursue_project($100M) = CAUTION",
+        "2) add_staff(..., capacity=500) for each ResourceRole",
+        "3) can_pursue_project($100M) returns can_staff=True, recommendation GO"
+      ],
+      "evidence": ["143:158", "228:235", "290:334"],
+      "remediation": "Clamp capacity to sane FTE range (e.g. 0 < capacity ≤ 1.5 per person); require HR/admin role for add_staff; audit phantom headcount vs payroll source of truth."
+    },
+    {
+      "id": "INV-05",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/enterprise-risk-aggregator/SKILL.md",
+      "title": "add_risk/import_project_risks accept probability=0 — hide CRITICAL risks from score/VaR/top lists",
+      "description": "probability is unconstrained. ProjectRisk.__post_init__ sets score=p*impact and level from score; p=0 yields score=0 and LOW even when impact is tens of millions. top_risks sort by score; calculate_var samples with p; expected_loss sums scores.",
+      "impact": "Project risk submitter zeros probability on material exposures → portfolio expected_loss, VaR, and top_risks omit them while mitigation priorities shift elsewhere.",
+      "attack_path": [
+        "1) import_project_risks / add_risk with impact=10_000_000, probability=0.8 → CRITICAL",
+        "2) Same impact with probability=0.0 → level LOW, score 0",
+        "3) generate_portfolio_profile top_risks/expected_loss/var_95 understate true exposure"
+      ],
+      "evidence": ["89:98", "155:176", "180:196", "299:316", "318:349"],
+      "remediation": "Require 0 < probability ≤ 1; flag impact-without-probability; separate residual probability from inherent; do not allow submitter to zero portfolio-visible score without review."
+    },
+    {
+      "id": "INV-06",
+      "severity": "MEDIUM",
+      "location": "5_DDC_Innovative/drone-site-survey/SKILL.md",
+      "title": "Unsaniized flight_id path traversal on report write",
+      "description": "process_survey builds report_path as output_dir / f'{flight.flight_id}_report.json' and opens it for write with no sanitization. flight_id containing ../ escapes the output directory (JSON write is live in the template; ortho/dem paths are string-only).",
+      "impact": "Survey caller can overwrite arbitrary writable files as the process user with attacker-controlled JSON statistics.",
+      "attack_path": [
+        "1) process_survey(SurveyFlight(flight_id='../../tmp/pwned', ...))",
+        "2) open writes outside configured output_dir"
+      ],
+      "evidence": ["196:198", "185:193"],
+      "remediation": "Allowlist flight_id to [A-Za-z0-9_-]; resolve path and reject if not under output_dir.resolve()."
+    }
+  ],
+  "near_misses": [
+    {
+      "item": "resource-pool-optimizer skip maintenance",
+      "reason": "MAINTENANCE exists only on AllocationStatus enum; Resource has no status field and allocate() never checks maintenance — no callable skip-maintenance path. Over-allocation via max() already reported CRITICAL."
+    },
+    {
+      "item": "prefab-optimization INSTALLED without QC",
+      "reason": "ModuleStatus.INSTALLED/QC are enum values only; no status-transition API in SKILL.md to forge INSTALLED."
+    },
+    {
+      "item": "n8n-workflow-automation executeCommand / SQL in workflow JSON",
+      "reason": "Already reported under WS/MQTT/n8n inject."
+    },
+    {
+      "item": "risk-assessment-ml joblib.load / defect-detection-ai torch.load",
+      "reason": "Unsafe deserialization already reported class; operator-supplied model path, no new remote trigger."
+    },
+    {
+      "item": "weather-impact-analysis SSRF",
+      "reason": "Host hardcoded to api.openweathermap.org; lat/lon only in query params."
+    },
+    {
+      "item": "ifc-data-extraction to_database(connection_string)",
+      "reason": "Already reported class (attacker DB URL / replace tables)."
+    },
+    {
+      "item": "site-logistics restriction soft-penalty (-100)",
+      "reason": "When an unrestricted zone exists, scoring prefers it; only allocates into restricted zone if it is the sole option — config edge, not a strong attacker forge."
+    },
+    {
+      "item": "labor-productivity near-zero hours",
+      "reason": "Inflates unit_rate metrics only; no privileged workflow/approval state forged."
+    },
+    {
+      "item": "safety-compliance-checker self-report inspection",
+      "reason": "Fall-protection / self-report class already reported; no new complete chain beyond that."
+    },
+    {
+      "item": "clash-detection / progress-monitoring-cv / document-classification-nlp",
+      "reason": "No new MEDIUM+ complete attacker→impact business-logic or injection chains found."
+    },
+    {
+      "item": "capacity phase_key typo / win_probability unbound",
+      "reason": "phase_keys largely match PHASE_FACTORS; win_probability=0 is weaker than phantom FTE GO (INV-04) and was not filed separately."
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 5,
+    "medium": 1,
+    "total": 6
+  },
+  "poc": "security-findings/poc_innovative_remaining_logic_2026-10-01.py"
+}
