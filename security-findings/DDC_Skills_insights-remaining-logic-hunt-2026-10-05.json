@@ -1,0 +1,114 @@
+{
+  "hunt": "3_DDC_Insights remaining Schedule/Safety/Field/AI/n8n logic (skip delay-analysis + known)",
+  "date": "2026-10-05",
+  "run": "https://cursor.com/agents/bc-a513854d-4e42-53a7-8037-83dda2f9f1a1",
+  "branch": "cursor/bc-47d10748-ed18-4c3b-85a5-ba23218ce53b-bca5",
+  "result": "4 HIGH validated findings",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_insights-remaining-logic-hunt-2026-10-05.json",
+  "repo_paths": [
+    "security-findings/DDC_Skills_insights-remaining-logic-hunt-2026-10-05.json",
+    "security-findings/poc_insights_remaining_logic_hunt_2026-10-05.py"
+  ],
+  "poc_result": "4 passed, 0 failed",
+  "skipped_already_reported": [
+    "delay-analysis concurrency/TIA (user skip)",
+    "look-ahead out-of-window preds / weekly blocked / constraint RESOLVED forge / crew_size",
+    "schedule-compression phantom fast-track/crash days without CPM drop",
+    "resource-allocation is_critical skip leveling",
+    "critical-path cycle→duration=0 / successor-before-pred",
+    "QC acceptance_criteria ignore / hold_point empty PASS / NCR auto-ACCEPT+verify",
+    "compliance ACTIVE/NA without docs",
+    "safety-inspection critical NA/pass→100%",
+    "incident NEAR_MISS downgrade + hours_worked TRIR collapse",
+    "n8n-daily-report / n8n-photo-report unauth webhooks",
+    "n8n-cost-estimation RvtExporter file_path shell injection",
+    "telegram-field-bot / n8n-pto / n8n-project missing allowlists",
+    "rfi webhook"
+  ],
+  "findings": [
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md",
+      "title": "Negative resource units invent phantom capacity and clear crane overallocation",
+      "description": "add_activity() accepts any float in resource_requirements, including negatives. calculate_resource_profile() and identify_overallocations() sum assignment.units with no units>0 check. A phantom activity with CRANE=-1 on the same days as two 1-crane steel picks cancels the overload: overallocations become {} and peak_usage falls to capacity while both picks remain scheduled.",
+      "impact": "Official resource histograms and leveling report a single tower crane as feasible for simultaneous steel picks — struck-by / collapse planning failure and hidden overallocation.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-a513854d-4e42-53a7-8037-83dda2f9f1a1",
+      "detected_at_pst": "2026-10-05T02:15:00-07:00",
+      "attack_path": "1. Agent uses ResourceOptimizer as the live crane/crew loading authority.\n2. Two critical steel activities each require CRANE:1 on the same days (capacity=1) → overallocation detected.\n3. Attacker adds a phantom activity with resource_requirements={'CRANE': -1} overlapping those days (is_critical=True so leveling will not shift it away).\n4. identify_overallocations() returns {}; peak_usage=1.0; make-ready publishes a clean crane plan.",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:105-131",
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:147-155",
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:168-180"
+      ],
+      "remediation": "Require units > 0 on add_activity assignments. Reject unknown resource_ids. Treat negative demand as an error, not a credit against capacity.",
+      "poc_video_notes": "Local PoC: before phantom CRANE over=+1 for 5 days; after CRANE:-1 → overallocations={}, peak=1.0."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md",
+      "title": "crash_cost < normal_cost yields negative crash_slope so compression plans report negative cost (paid to accelerate)",
+      "description": "Activity.crash_slope = (crash_cost - normal_cost) / (normal_duration - crash_duration) with no requirement that crash_cost >= normal_cost. analyze_crash_options sorts by ascending slope, so a zero/negative crash_cost activity is preferred. crash_schedule adds that negative slope into total_additional_cost each day. Distinct from the already-reported phantom achieved_reduction when parallel critical paths keep CPM duration unchanged: this invents negative dollars on the CompressionPlan even when duration does drop.",
+      "impact": "Official compression / time-cost curve publishes accelerating the job as a profit (e.g. -$50k for 5 crash days). Buyout and recovery decisions treat that forged savings as real.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-a513854d-4e42-53a7-8037-83dda2f9f1a1",
+      "detected_at_pst": "2026-10-05T02:15:00-07:00",
+      "attack_path": "1. Agent builds a crash/fast-track recovery plan via ScheduleCompressor.\n2. Attacker supplies Foundation with normal_cost=$100k and crash_cost=$0 (or negative).\n3. crash_slope = -$10k/day; crash_schedule(5) selects it first.\n4. CompressionPlan.total_additional_cost = -$50,000 with achieved_reduction=5 is published as the recovery option.",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:64-69",
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:176-192",
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:218-226"
+      ],
+      "remediation": "Require crash_cost >= normal_cost and crash_duration < normal_duration with positive durations. Reject non-positive crash slopes. Cap total_additional_cost at >= 0 unless an authenticated VE credit is recorded separately.",
+      "poc_video_notes": "Local PoC: Foundation crash_cost=0 → slope=-10000; crash 5 days → total_additional_cost=-50000."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/critical-path-analyzer/SKILL.md",
+      "title": "Zero or negative activity duration collapses CPM project length (90d→50d/40d)",
+      "description": "import_schedule/add_activity accept duration without requiring duration > 0. _forward_pass sets early_finish = early_start + duration, so duration=0 removes a 40-day steel activity from the path length and duration=-10 pulls successors earlier. Distinct from the already-reported predecessor-cycle → empty forward-pass / duration=0 finding: this is an acyclic network with attacker-controlled non-positive durations.",
+      "impact": "Official CPM reports a 40–50 day project instead of 90 days. Float, critical path, and delay simulation all trust the collapsed length — hidden steel schedule risk and false recovery.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-a513854d-4e42-53a7-8037-83dda2f9f1a1",
+      "detected_at_pst": "2026-10-05T02:15:00-07:00",
+      "attack_path": "1. Agent runs CriticalPathAnalyzer as the live CPM / delay-impact tool.\n2. Attacker imports Found(30)→Steel(0 or -10)→Roof(20) instead of Steel(40).\n3. calculate_critical_path() yields project_duration 50 (zero) or 40 (negative) vs honest 90.\n4. Downstream look-ahead and LD analysis consume the collapsed duration.",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/critical-path-analyzer/SKILL.md:103-116",
+        "3_DDC_Insights/Schedule-Optimization/critical-path-analyzer/SKILL.md:183-201"
+      ],
+      "remediation": "Reject duration <= 0 on import/add. Fail closed before forward/backward pass if any activity has non-positive duration.",
+      "poc_video_notes": "Local PoC: honest 90d; Steel duration=0 → 50d; Steel duration=-10 → 40d."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md",
+      "title": "record_ncr_response accepts negative cost_impact/schedule_impact and publishes inverted QC liability",
+      "description": "record_ncr_response stores caller cost_impact and schedule_impact with no sign or magnitude checks, then stamps NCRStatus.ACCEPTED. get_quality_metrics / generate_qc_report sum those fields across all NCRs. Distinct from the already-reported NCR auto-ACCEPT / verify_remediation evidence skip: this is the negative-value integrity bug on official cost/schedule impact totals (even a single accepted NCR with cost_impact=-500000 drives total_cost_impact negative).",
+      "impact": "QC dashboards and owner reports can show negative cost and schedule impact for real CRITICAL defects — understating liability and recovery exposure.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-a513854d-4e42-53a7-8037-83dda2f9f1a1",
+      "detected_at_pst": "2026-10-05T02:15:00-07:00",
+      "attack_path": "1. Agent uses QualityControlManager as the NCR / QC metrics system of record.\n2. A CRITICAL defect NCR is created (or already exists).\n3. Attacker calls record_ncr_response(..., cost_impact=-500000, schedule_impact=-30).\n4. get_quality_metrics and generate_qc_report publish total_cost_impact=-500000 and -30 schedule days.",
+      "evidence": [
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:257-269",
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:310-311",
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:332-333"
+      ],
+      "remediation": "Require cost_impact >= 0 and schedule_impact_days >= 0 (or a separate authenticated credit path). Cap magnitudes; do not auto-ACCEPT on response.",
+      "poc_video_notes": "Local PoC: record_ncr_response cost_impact=-500000 schedule_impact=-30 → metrics totals match; report includes $-500,000."
+    }
+  ],
+  "near_misses": [
+    "n8n-pto status handler does not bind reply author to foreman_chat_id — subsumed by already-reported missing Telegram allowlists; private 1:1 chats limit cross-user replies",
+    "n8n-cost-estimation file_path shell — already HIGH in flagged-9",
+    "multi-agent-estimation Webhook node — illustrative, no auth fields but no executable webhook contract beyond sketch (prior near-miss)",
+    "llm-document-extraction / voice-to-report prompt injection via PDF/transcript — probabilistic LLM; no deterministic forge without model cooperation",
+    "voice/llm open(path) — operator-supplied local paths, no remote path param in complete chain",
+    "toolbox-talk-generator / uberization-readiness — no authoritative safety/compliance stamp gate",
+    "resource capacity=0 → ZeroDivisionError DoS only"
+  ]
+}
