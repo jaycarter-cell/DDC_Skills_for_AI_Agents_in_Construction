@@ -5,12 +5,7 @@
   "run": "https://cursor.com/agents/bc-e721847f-0c97-53d5-89ad-b39bdf58416e",
   "repo": "github.com/jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
   "result": "7 HIGH + 1 MEDIUM",
-  "summary": {
-    "critical": 0,
-    "high": 7,
-    "medium": 1,
-    "total": 8
-  },
+  "summary": {"critical": 0, "high": 7, "medium": 1, "total": 8},
   "artifact": "/opt/cursor/artifacts/DDC_Skills_underhunted-cost-closeout-doc-hunt-2026-10-07.json",
   "poc": "security-findings/poc_underhunted_cost_closeout_doc_hunt_2026-10-07.py",
   "poc_result": "10 passed, 0 failed",
@@ -47,11 +42,11 @@
   ],
   "near_misses": [
     "payment-application-generator neg retainage + SOV overbill + unauthenticated add_change_order (sibling of processor already reported)",
-    "change-order-processor approve DRAFT\u2192APPROVED + add_cost_item mutates APPROVED (toolkit change-order exclusion)",
+    "change-order-processor approve DRAFT→APPROVED + add_cost_item mutates APPROVED (toolkit change-order exclusion)",
     "cash-flow-forecaster neg retention (already reported toolkit cashflow)",
     "bid-analysis-comparator unbounded scores (already reported)",
-    "as-built-tracker review NOT_STARTED\u2192APPROVED (weaker closeout-doc impact)",
-    "rfi-management respond DRAFT\u2192ANSWERED + neg cost_amount (doc workflow; cost flag only)",
+    "as-built-tracker review NOT_STARTED→APPROVED (weaker closeout-doc impact)",
+    "rfi-management respond DRAFT→ANSWERED + neg cost_amount (doc workflow; cost flag only)",
     "toolkit budget-variance-analyzer adjust_budget unauthenticated (calculator-adjacent vs curated contingency)",
     "contractor-matching-ai / enterprise-risk-aggregator / open-construction-estimate (scoring/calculator; no money status forge)"
   ],
@@ -60,7 +55,7 @@
       "severity": "high",
       "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
       "title": "record_payment forges PAID without APPROVED status or lien waiver; overpays past contract",
-      "description": "record_payment unconditionally sets PaymentStatus.PAID with no check that the payment is APPROVED, not HELD/DISPUTED, or accompanied by a lien waiver. approve_payment is similarly ungated. record_invoice accepts any gross_amount with no contract ceiling, so an attacker can invoice 5\u00d7 contract and immediately mark it PAID. total_paid and export reports then treat the forged payment as settled.",
+      "description": "record_payment unconditionally sets PaymentStatus.PAID with no check that the payment is APPROVED, not HELD/DISPUTED, or accompanied by a lien waiver. approve_payment is similarly ungated. record_invoice accepts any gross_amount with no contract ceiling, so an attacker can invoice 5× contract and immediately mark it PAID. total_paid and export reports then treat the forged payment as settled.",
       "impact": "Subcontractor payment register shows settled PAID amounts without approval or lien waiver; contract balance goes negative; operators/agents may release cash or close lien exposure incorrectly.",
       "attack_path": [
         "Add or target a subcontractor with known sub_id and contract_amount.",
@@ -81,7 +76,7 @@
       "severity": "high",
       "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
       "title": "Negative invoice gross_amount creates negative retention that inflates balance_remaining",
-      "description": "record_invoice computes retention_held = gross_amount * retention_percent with no non-negative check. A negative gross_amount yields negative retention_held. total_retention sums all retention_held values, so balance_remaining = contract - total_paid - total_retention increases when retention is negative\u2014creating artificial remaining obligation without marking anything PAID.",
+      "description": "record_invoice computes retention_held = gross_amount * retention_percent with no non-negative check. A negative gross_amount yields negative retention_held. total_retention sums all retention_held values, so balance_remaining = contract - total_paid - total_retention increases when retention is negative—creating artificial remaining obligation without marking anything PAID.",
       "impact": "Payment/retention ledgers understate retention held and overstate remaining-to-pay, enabling inflated subsequent invoices or financing draws against phantom balance.",
       "attack_path": [
         "Call record_invoice(sub_id, ..., gross_amount=-20000) with retention_percent=0.10.",
@@ -93,19 +88,19 @@
         "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:92-97"
       ],
       "verified_by_tracing_code": true,
-      "not_duplicate_because": "Not retention-tracker neg release (that skill releases held retention). Not toolkit/curated cashflow neg retention. This is negative invoice\u2192negative retention_held on the subcontractor payment tracker balance formula."
+      "not_duplicate_because": "Not retention-tracker neg release (that skill releases held retention). Not toolkit/curated cashflow neg retention. This is negative invoice→negative retention_held on the subcontractor payment tracker balance formula."
     },
     {
       "severity": "high",
       "location": "5_DDC_Innovative/change-order-analysis/SKILL.md",
-      "title": "approve() forges DRAFT\u2192APPROVED; update_cost mutates already-APPROVED change orders",
+      "title": "approve() forges DRAFT→APPROVED; update_cost mutates already-APPROVED change orders",
       "description": "ChangeOrderManager.approve() sets status=APPROVED for any existing CO with no requirement that it be SUBMITTED. update_cost writes cost_breakdown on any CO including APPROVED, so an attacker approves a tiny DRAFT then inflates labor/materials after the approval stamp. get_summary aggregates cost_breakdown.total across orders.",
       "impact": "Forged approved change orders and post-approval amount inflation corrupt contract value / CO exposure used for owner billing and contingency.",
       "attack_path": [
-        "create_change_order(...) \u2192 status DRAFT.",
+        "create_change_order(...) → status DRAFT.",
         "update_cost(co_id, CostBreakdown(labor=5000)).",
-        "approve(co_id, 'attacker') \u2192 APPROVED without submit_for_approval.",
-        "update_cost(co_id, CostBreakdown(labor=500000)) \u2192 approved total becomes $500k."
+        "approve(co_id, 'attacker') → APPROVED without submit_for_approval.",
+        "update_cost(co_id, CostBreakdown(labor=500000)) → approved total becomes $500k."
       ],
       "evidence": [
         "5_DDC_Innovative/change-order-analysis/SKILL.md:240-251",
@@ -118,11 +113,11 @@
     {
       "severity": "high",
       "location": "5_DDC_Innovative/permit-tracking-automation/SKILL.md",
-      "title": "update_status forges DRAFT\u2192ISSUED and mints permit_number without required documents",
+      "title": "update_status forges DRAFT→ISSUED and mints permit_number without required documents",
       "description": "submit_application correctly blocks on missing required documents, but update_status accepts any PermitStatus with no transition validation and no document/fee checks. Setting ISSUED assigns issued_date, synthesizes permit_number, and sets expiry_date even when the application is still DRAFT with incomplete docs.",
-      "impact": "System of record shows an issued building permit without submission or mandatory drawings\u2014operators/agents may authorize construction starts against a forged permit.",
+      "impact": "System of record shows an issued building permit without submission or mandatory drawings—operators/agents may authorize construction starts against a forged permit.",
       "attack_path": [
-        "create_application(BUILDING, ...) \u2192 DRAFT with required docs incomplete.",
+        "create_application(BUILDING, ...) → DRAFT with required docs incomplete.",
         "Call update_status(application_id, PermitStatus.ISSUED) instead of submit_application.",
         "Observe status=ISSUED, permit_number minted, issued_date set, documents still incomplete."
       ],
@@ -131,16 +126,16 @@
         "5_DDC_Innovative/permit-tracking-automation/SKILL.md:313-326"
       ],
       "verified_by_tracing_code": true,
-      "not_duplicate_because": "Not in the already-reported list. Distinct from material DELIVERED forge / payment DRAFT approve\u2014this is regulatory permit ISSUED forge bypassing the skill's own document gate."
+      "not_duplicate_because": "Not in the already-reported list. Distinct from material DELIVERED forge / payment DRAFT approve—this is regulatory permit ISSUED forge bypassing the skill's own document gate."
     },
     {
       "severity": "high",
       "location": "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md",
-      "title": "update_claim_status forges APPROVED with arbitrary cost_covered; allows DENIED\u2192APPROVED",
-      "description": "update_claim_status mass-assigns any ClaimStatus and optional cost_covered with no workflow (DRAFT\u2192SUBMITTED\u2192UNDER_REVIEW) and no irreversibility. An attacker sets APPROVED with a large cost_covered, or reopens DENIED claims to APPROVED.",
-      "impact": "Warranty claim register shows approved payout liability for arbitrary amounts without review\u2014drives vendor chargebacks / owner claims.",
+      "title": "update_claim_status forges APPROVED with arbitrary cost_covered; allows DENIED→APPROVED",
+      "description": "update_claim_status mass-assigns any ClaimStatus and optional cost_covered with no workflow (DRAFT→SUBMITTED→UNDER_REVIEW) and no irreversibility. An attacker sets APPROVED with a large cost_covered, or reopens DENIED claims to APPROVED.",
+      "impact": "Warranty claim register shows approved payout liability for arbitrary amounts without review—drives vendor chargebacks / owner claims.",
       "attack_path": [
-        "file_claim(...) \u2192 ClaimStatus.DRAFT.",
+        "file_claim(...) → ClaimStatus.DRAFT.",
         "update_claim_status(claim_id, ClaimStatus.APPROVED, cost_covered=999999).",
         "Optionally update_claim_status(..., DENIED) then back to APPROVED to revive denied claims."
       ],
@@ -154,13 +149,13 @@
     {
       "severity": "high",
       "location": "1_DDC_Toolkit/Field-Operations/punch-list-manager/SKILL.md",
-      "title": "verify_item forges OPEN\u2192ACCEPTED without completion; add_back_charge accepts negative amounts",
+      "title": "verify_item forges OPEN→ACCEPTED without completion; add_back_charge accepts negative amounts",
       "description": "verify_item does not require READY_FOR_VERIFICATION (or any completion photo). Calling it with accepted=True moves OPEN directly to ACCEPTED. add_back_charge writes any float including negatives into back_charge_amount, inverting back-charge liability used in closeout cost recovery.",
-      "impact": "Punch items close as accepted without work; negative back-charges credit the responsible party instead of charging them\u2014affects retainage release and trade settlement.",
+      "impact": "Punch items close as accepted without work; negative back-charges credit the responsible party instead of charging them—affects retainage release and trade settlement.",
       "attack_path": [
-        "add_item(...) \u2192 OPEN.",
-        "verify_item(item_id, verified_by='attacker', accepted=True) \u2192 ACCEPTED without mark_complete.",
-        "add_back_charge(item_id, amount=-50000) \u2192 negative charge on the item."
+        "add_item(...) → OPEN.",
+        "verify_item(item_id, verified_by='attacker', accepted=True) → ACCEPTED without mark_complete.",
+        "add_back_charge(item_id, amount=-50000) → negative charge on the item."
       ],
       "evidence": [
         "1_DDC_Toolkit/Field-Operations/punch-list-manager/SKILL.md:345-378",
@@ -172,13 +167,13 @@
     {
       "severity": "high",
       "location": "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md",
-      "title": "use_contingency unbounded and accepts negatives\u2014inflate or wipe revised_budget",
+      "title": "use_contingency unbounded and accepts negatives—inflate or wipe revised_budget",
       "description": "use_contingency adds amount to contingency_used and target revised_budget with no check against remaining contingency pool, no approval gate, and no non-negative validation. Large positives silently inflate cost-code budgets; large negatives drive revised_budget and contingency_used negative. revise_budget similarly overwrites without authZ.",
       "impact": "Project budget/forecast used for variance and financing can be inflated to hide overruns or wiped to understate funding needs.",
       "attack_path": [
         "add_cost_code('01', ..., budget=100000).",
-        "use_contingency(5000000, '01') \u2192 revised_budget=5100000 with no pool limit.",
-        "use_contingency(-6000000, '01') \u2192 revised_budget negative / contingency_used negative."
+        "use_contingency(5000000, '01') → revised_budget=5100000 with no pool limit.",
+        "use_contingency(-6000000, '01') → revised_budget negative / contingency_used negative."
       ],
       "evidence": [
         "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md:221-230",
@@ -190,11 +185,11 @@
     {
       "severity": "medium",
       "location": "1_DDC_Toolkit/Document-Control/submittal-tracker/SKILL.md",
-      "title": "review() forges DRAFT\u2192APPROVED without submit or files",
+      "title": "review() forges DRAFT→APPROVED without submit or files",
       "description": "review() assigns any SubmittalStatus including APPROVED and stamps approved_date with no requirement that the submittal be SUBMITTED or have files. create_submittal leaves status=DRAFT and files=[]; a single review call forges approval used to authorize procurement/installation.",
-      "impact": "Approved submittal log authorizes materials/equipment without a submitted package\u2014quality and contract compliance failure.",
+      "impact": "Approved submittal log authorizes materials/equipment without a submitted package—quality and contract compliance failure.",
       "attack_path": [
-        "create_submittal(...) \u2192 DRAFT, files=[].",
+        "create_submittal(...) → DRAFT, files=[].",
         "review(sub_id, SubmittalStatus.APPROVED, 'attacker').",
         "Observe status=APPROVED, approved_date set, still no files."
       ],
@@ -205,9 +200,5 @@
       "verified_by_tracing_code": true,
       "not_duplicate_because": "Not among already-reported items. Document-control approval forge distinct from payment/material status forges."
     }
-  ],
-  "pr": "https://github.com/jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction/pull/11",
-  "slack": "https://theprofitable-qgk1534.slack.com/archives/C0AU5R3VDEW/p1791366214404789",
-  "slack_channel": "C0AU5R3VDEW",
-  "slack_ts": "1791366214.404789"
+  ]
 }
