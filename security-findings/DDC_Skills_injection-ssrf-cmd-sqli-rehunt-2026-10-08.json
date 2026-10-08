@@ -1,0 +1,147 @@
+{
+  "hunt": "HIGH/CRITICAL SQL injection / command injection / SSRF / path traversal / pickle complete-chain re-hunt",
+  "date": "2026-10-08",
+  "branch": "cursor/persistent-finding-memory-bf54",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "run": "https://cursor.com/agents/bc-927211da-e3f3-50db-a170-f371ce0e78d0",
+  "result": "NONE",
+  "findings": [],
+  "scope": {
+    "sql_injection": [
+      "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder/SKILL.md",
+      "2_DDC_Book/3.4-ERP-Integration/erp-data-extractor/SKILL.md",
+      "2_DDC_Book/1.1-Data-Evolution/historical-data-manager/SKILL.md",
+      "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md"
+    ],
+    "command_injection": [
+      "1_DDC_Toolkit/CAD-Converters/*/SKILL.md",
+      "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md",
+      "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md"
+    ],
+    "ssrf": [
+      "etl-pipeline extract_from_api",
+      "n8n-photo-report webhook_url",
+      "n8n-daily-report webhook_url",
+      "daily-report-generator weather",
+      "weather-api",
+      "weather-impact-analysis",
+      "open-data-integrator"
+    ],
+    "path_traversal": [
+      "df-merger",
+      "etl-pipeline",
+      "document-generation",
+      "cwicr loaders",
+      "email-construction attachments"
+    ],
+    "deserialization": [
+      "ml-model-retrainer pickle"
+    ]
+  },
+  "code_changed_since_prior_injection_hunt_2026_09_30": false,
+  "skipped_already_reported": [
+    {
+      "severity": "CRITICAL",
+      "location": "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md",
+      "title": "Unauthenticated /qto-extract webhook Execute Command RCE via model_path",
+      "evidence": "L524-L531 webhook path /qto-extract; Execute Command interpolates {{$json.model_path}} into RvtExporter shell command",
+      "ref": "flagged-21 / injection-ssrf-scope-hunt-2026-09-30 skipped_already_reported"
+    },
+    {
+      "severity": "HIGH",
+      "location": "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md",
+      "title": "extract_from_api(api_url) SSRF via requests.get",
+      "evidence": "L117-L119 requests.get(api_url) with caller-controlled URL",
+      "ref": "flagged-21 / injection-ssrf-scope-hunt-2026-09-30"
+    },
+    {
+      "severity": "HIGH",
+      "location": "2_DDC_Book/3.4-ERP-Integration/erp-data-extractor/SKILL.md",
+      "title": "generate_sql_query f-string filter SQLi pattern",
+      "evidence": "L275-L290 unsanitized filter values into WHERE clause",
+      "ref": "flagged-21 / injection-ssrf-scope-hunt-2026-09-30"
+    },
+    {
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md",
+      "title": "Unauthenticated daily-report-data webhook (Procore OAuth + forged reports)",
+      "ref": "flagged-21 / bc-88e1ee40"
+    },
+    {
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md",
+      "title": "Unauthenticated photo-upload webhook burns Anthropic key / poisons digest",
+      "ref": "flagged-21 / bc-88e1ee40"
+    },
+    {
+      "severity": "HIGH/MEDIUM",
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md",
+      "title": "split_csv path traversal via group values / output_dir",
+      "ref": "PR #2 / flagged-15; also flagged-39"
+    },
+    {
+      "severity": "MEDIUM/HIGH",
+      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md",
+      "title": "SMTP send opens attacker-controlled attachment paths (local file exfil)",
+      "evidence": "L431-L436 open(attachment_path,'rb') then sendmail",
+      "ref": "PR #2 flagged-15; reconfirmed flagged-41 finding 6"
+    },
+    {
+      "severity": "MEDIUM",
+      "location": "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md",
+      "title": "project_name path traversal writes Excel outside output_path",
+      "evidence": "L406 excel_path = f\"{output_path}/{project_name}_Estimate.xlsx\"",
+      "ref": "PR #9"
+    }
+  ],
+  "near_misses": [
+    {
+      "item": "sql-query-builder unescaped f-string SQL (WhereCondition/insert/update/daily_report_summary month)",
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder/SKILL.md:70-95,221,287-353,486-497",
+      "why": "Builder returns query strings only — no execute(), no DB driver, no webhook. Same library-SQLi class as already-reported erp generate_sql_query. generate_parameterized exists but is unused by the unsafe builders."
+    },
+    {
+      "item": "historical-data-manager Access table-name f-string into pd.read_sql",
+      "location": "2_DDC_Book/1.1-Data-Evolution/historical-data-manager/SKILL.md:132-152",
+      "why": "pd.read_sql(f'SELECT * FROM [{table}]', conn) executes, and table names come from the Access catalog of a provided .mdb/.accdb. Microsoft Access forbids [] in table names, blocking ]-breakout identifier injection via normal DB creation. Stub never appends rows to records. Requires operator to open the vendor file locally — no networked auto-ingest webhook. Connection-string DBQ={file_path} similarly needs operator-chosen path."
+    },
+    {
+      "item": "etl extract_from_database(db_path, query) arbitrary SQL execute",
+      "location": "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md:137-148",
+      "why": "Helper accepts raw query and runs pd.read_sql_query, but ConstructionETLPipeline.extract uses local excel/pdf folders from config; no remote ingress for query. extract_from_api SSRF already reported separately."
+    },
+    {
+      "item": "CAD-Converters + bim-cost-estimation-cwicr Python subprocess list argv",
+      "location": "1_DDC_Toolkit/CAD-Converters/*; bim-cost-estimation-cwicr L447-451",
+      "why": "subprocess.run([...], shell=False). Paths/options are operator-chosen local args. Filename metacharacters do not yield shell RCE. Argument injection via options lacks remote trigger. ifc-qto n8n Execute Command RCE already reported separately."
+    },
+    {
+      "item": "n8n-photo/daily Python helpers requests.post(webhook_url)",
+      "location": "n8n-photo-report L171-185; n8n-daily-report L146-157",
+      "why": "Caller-supplied webhook_url is intentional operator upload trigger (self-SSRF/misconfig). Distinct receive-side unauth webhooks already reported."
+    },
+    {
+      "item": "daily-report-generator / weather-api / weather-impact-analysis / open-data-integrator HTTP",
+      "why": "Fixed API hosts (OpenWeatherMap, Open-Meteo). location/lat/lon go in query params via requests params= dict (encoded). open-data-integrator WeatherDataConnector never calls requests — simulated records only. OpenDataSource.url field unused by fetch path."
+    },
+    {
+      "item": "df-merger path traversal",
+      "location": "2_DDC_Book/2.3-Pandas-LLM-Analysis/df-merger/SKILL.md",
+      "why": "In-memory DataFrame merge only — no open()/to_csv()/Path write sinks."
+    },
+    {
+      "item": "etl-pipeline / document-generation / cwicr-data-loader output_path writes",
+      "why": "Arbitrary write if caller passes malicious output_path, but no cross-trust remote party supplies the path without already controlling the agent/operator. csv-handler and email-construction (higher-impact read+exfil) already reported for path class."
+    },
+    {
+      "item": "ml-model-retrainer pickle.load",
+      "location": "2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-retrainer/SKILL.md:349-352",
+      "why": "Unsafe deserialize sink exists, but load path is operator-supplied local filepath with no untrusted auto-load webhook. Prior hunts classified as near-miss / known."
+    },
+    {
+      "item": "n8n-cost-estimation shell interpolation of file_path",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-cost-estimation/SKILL.md:54-57",
+      "why": "Out of primary CAD-Converters path; classic `RvtExporter.exe \"${filePath}\"` sink but no documented webhook letting remote attacker supply file_path (operator/pipeline-local). Same near-miss as 2026-09-30."
+    }
+  ]
+}
