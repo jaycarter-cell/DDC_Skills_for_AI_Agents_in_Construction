@@ -1,0 +1,113 @@
+{
+  "hunt": "Under-reviewed SKILL.md authZ / business-logic (money / safety / privilege) — scoped exclude list",
+  "date": "2026-10-11",
+  "branch": "cursor/vulnerability-hunter-agent-3f89",
+  "run": "https://cursor.com/agents/bc-d188beef-6b82-5b37-ac36-36c5a84363d9",
+  "result": "1 CRITICAL + 3 HIGH",
+  "summary": {"critical": 1, "high": 3, "medium": 0, "total": 4},
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_under-reviewed-authz-money-safety-hunt-2026-10-11.json",
+  "poc_result": "4 passed, 0 failed",
+  "repo_paths": [
+    "security-findings/DDC_Skills_under-reviewed-authz-money-safety-hunt-2026-10-11.json",
+    "security-findings/poc_under_reviewed_authz_money_safety_hunt_2026-10-11.py"
+  ],
+  "skipped_already_reported": [
+    "payment-application-processor/generator", "retention-tracker",
+    "subcontractor-payment-tracker", "change-order-*", "cwicr-change-order",
+    "permit-tracking-automation", "warranty-tracker", "punch-list-manager",
+    "budget-variance-analyzer use_contingency", "submittal-tracker",
+    "material-tracker", "material-procurement-tracker", "material-tracking-iot weight",
+    "subcontractor-prequalification", "bim-clash", "resource-leveler",
+    "cashflow-forecaster", "sensor-data SUSPECT", "site-logistics",
+    "as-built-*", "cwicr-rate-updater", "safety-inspection Pass forge",
+    "labor-allocation", "lien-waiver/claims/NCR verify_remediation",
+    "bid-analysis/bid-analyzer", "schedule-delay-analyzer overlap claims",
+    "delay-analysis concurrency", "digital-twin percent_complete",
+    "enterprise-risk P×I LOW", "contractor-matching valid_until",
+    "labor-productivity near-zero hours", "look-ahead/schedule-compression/CPA"
+  ],
+  "near_misses": [
+    "compliance-tracker update_status ACTIVE — permit-tracking sibling",
+    "quality-control conduct_inspection pass + verify_remediation — safety-inspection / NCR siblings",
+    "cwicr-overhead-markup / cwicr-escalation unbounded rates — rate-updater sibling",
+    "equipment-telematics hour rewind — FAULT never gates ops (soft-only)",
+    "safety-compliance-checker / safety-inspection-checklist pass forge — safety-inspection sibling",
+    "estimate-builder validate() advisory-only on neg qty — weaker money chain than location/risk",
+    "defect-detection confidence_threshold — param abuse without durable status authority",
+    "CWICR labor/crew/equipment/productivity/data-loader — calculators / already covered patterns"
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "primary_file": "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md",
+      "title": "Maintenance/REPAIR status never grounds equipment; assign_equipment ignores unsafe status",
+      "attack_chain": "1. Crane is overdue / needs critical brake repair.\n2. Caller invokes schedule_maintenance(...); MaintenanceRecord is stored but equipment.status stays AVAILABLE (MAINTENANCE/REPAIR never set by any API).\n3. get_available_equipment() still returns the crane; dispatch uses it.\n4. Even if status is forced to REPAIR, assign_equipment() has no status check — sets IN_USE and sends unsafe crane to site.\n5. return_equipment(hours_used=-N) rewinds the hour meter, further hiding overdue service.\nImpact: Tower crane / heavy equipment with open repair is authorized for site use — struck-by / collapse life-safety.",
+      "evidence": [
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:105-125",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:127-133",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:135-142",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:144-149"
+      ],
+      "existing_controls": "EquipmentStatus enum includes MAINTENANCE/REPAIR/RETIRED; get_available_equipment filters AVAILABLE only — but nothing transitions into MAINTENANCE/REPAIR, and assign_equipment never consults status.",
+      "why_not_duplicate": "Not site-logistics crane capacity soft-check; not equipment-telematics FAULT-unused soft alerts. This is the fleet assignment authority itself with a dead maintenance gate.",
+      "poc": "schedule_maintenance → still available; status=REPAIR → assign succeeds → IN_USE; return(-200) rewinds hours 600→400.",
+      "remediation": "schedule_maintenance must set MAINTENANCE/REPAIR and clear only after completed_date + competent sign-off. assign_equipment must reject non-AVAILABLE. Reject hours_used < 0. Block assign when current_hours >= next_maintenance_hours.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-d188beef-6b82-5b37-ac36-36c5a84363d9"
+    },
+    {
+      "severity": "high",
+      "primary_file": "3_DDC_Insights/Safety-Quality/incident-reporting/SKILL.md",
+      "title": "Caller-chosen incident_type underclassifies LOST_TIME/FATALITY as NEAR_MISS (TRIR=0) + self-complete CA",
+      "attack_chain": "1. Lost-time injury occurs (injured person present).\n2. Attacker/complicit reporter calls report_incident(incident_type=NEAR_MISS, ...) with the same injury facts.\n3. osha_recordable stays False because only MEDICAL_TREATMENT/LOST_TIME/FATALITY auto-flag.\n4. calculate_trir / metrics / OSHA report show 0 recordables (honest LOST_TIME → TRIR 1.0).\n5. Same actor assign_corrective_action + complete_corrective_action(verification_notes=attacker) marks CA completed with no independent verifier and no CLOSED gate.\nImpact: OSHA log / TRIR / DART fraud; insurance and prequalification deception; hazards closed on paper.",
+      "evidence": [
+        "3_DDC_Insights/Safety-Quality/incident-reporting/SKILL.md:144-182",
+        "3_DDC_Insights/Safety-Quality/incident-reporting/SKILL.md:250-260",
+        "3_DDC_Insights/Safety-Quality/incident-reporting/SKILL.md:301-313"
+      ],
+      "existing_controls": "Auto-sets osha_recordable for three severe types — but type is fully caller-controlled with no cross-check against injured_person / days_lost / description. No role separation on CA completion.",
+      "why_not_duplicate": "Not safety-inspection Pass forge (checklist pass/fail). This is OSHA severity classification + TRIR metric authority and CA self-verify on the incident system.",
+      "poc": "Same injury: LOST_TIME → TRIR=1.0/osha=True; NEAR_MISS → TRIR=0.0/osha=False; CA completed by same actor.",
+      "remediation": "Derive recordability from injury outcome fields; forbid NEAR_MISS when injured_person or days_lost>0; require independent verifier ≠ assigned_to/reported_by for complete_corrective_action; only CLOSE when all CAs verified.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-d188beef-6b82-5b37-ac36-36c5a84363d9"
+    },
+    {
+      "severity": "high",
+      "primary_file": "1_DDC_Toolkit/CWICR-Database/cwicr-location-factor/SKILL.md",
+      "title": "add_location overwrites canonical location codes with unbounded/zero factors → collapses adjusted bids",
+      "attack_chain": "1. Estimate pipeline calls CWICRLocationFactor.adjust_cost(..., 'US-NYC') for regional pricing.\n2. Attacker calls add_location(LocationFactor(location_code='US-NYC', labor_factor=0.01, material_factor=0.01, equipment_factor=0.01, ...)) — no authZ, no bounds, overwrites built-in table.\n3. Subsequent adjust_cost/adjust_estimate apply ~0.01 relative factors.\n4. PoC: $1,000,000 base → honest NYC ~$1,292,500; poisoned → $10,000.\nImpact: Underbid / underfunded labor-material budgets; poisoned multi-location comparisons and payment baselines.",
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-location-factor/SKILL.md:153-155",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-location-factor/SKILL.md:157-209"
+      ],
+      "existing_controls": "Built-in LOCATION_FACTORS table exists, but add_location blindly replaces by location_code with no range checks or admin role.",
+      "why_not_duplicate": "Not cwicr-rate-updater (unit rate cells in CWICR DB). Distinct geographic factor layer that can overwrite published city codes used by adjust_cost/adjust_estimate.",
+      "poc": "Overwrite US-NYC factors to 0.01 → adjusted cost 1292500 → 10000.",
+      "remediation": "Disallow overwrite of built-in codes without elevated role; clamp factors to sane band (e.g. 0.5–2.5); audit trail; reject non-positive factors.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-d188beef-6b82-5b37-ac36-36c5a84363d9"
+    },
+    {
+      "severity": "high",
+      "primary_file": "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md",
+      "title": "Unbounded min_factor/max_factor in item risk collapses or negates Monte Carlo contingency",
+      "attack_chain": "1. Risk-adjusted estimate calls analyze_risk(items) / calculate_item_risk.\n2. Attacker supplies items with min_factor=1.0, max_factor=1.0 (or negative range).\n3. define_item_risk accepts factors with no bounds; run_monte_carlo / deterministic p80 uses them.\n4. contingency = p80 - base_estimate → ~0 (UNIFORM equal) or large negative (negative factors).\n5. Bid / contingency allowance underfunded while reports still claim 'risk-adjusted'.\nImpact: Contingency wipe or credit against base — false competitiveness and unfunded risk.",
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md:131-157",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md:159-192",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md:255-307"
+      ],
+      "existing_controls": "DEFAULT_RISK_PARAMS provide defaults only when min/max omitted; caller overrides are trusted. No clamp that max>min>0.",
+      "why_not_duplicate": "Not budget-variance use_contingency (spending pot). Not cwicr-rate-updater unit rates. This poisons the contingency recommendation engine via distribution factors.",
+      "poc": "Honest triangular 0.9–1.4 → contingency ~$201k; UNIFORM 1.0–1.0 → $0; UNIFORM -2.0–-0.5 → contingency ~-$1.79M.",
+      "remediation": "Clamp min_factor/max_factor (e.g. 0.5≤min<max≤3.0); reject non-positive costs; require risk_level consistency with factor span; floor contingency at 0.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-d188beef-6b82-5b37-ac36-36c5a84363d9"
+    }
+  ]
+}
