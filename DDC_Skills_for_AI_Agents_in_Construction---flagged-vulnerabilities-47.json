@@ -1,0 +1,10 @@
+{
+  "hunt": "injection/SSRF/RCE/path-traversal/deserialization/secrets — under-hunted skills re-hunt",
+  "date": "2026-10-12",
+  "branch": "cursor/vulnerability-finding-workflow-a9bd",
+  "result": "NONE",
+  "findings_count": 0,
+  "findings": [],
+  "summary": "No NEW validated MEDIUM+ complete attack chains. Under-hunted skills re-read; already-reported sinks confirmed present; near-misses documented (operator paths, library-only SQL, fixed-host weather, unauth RFI webhook spam class, unwired command fragments).",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_injection-ssrf-underhunted-rehunt-2026-10-12.json"
+}

@@ -1,0 +1,175 @@
+{
+  "hunt": "innovative-schedule-safety-business-logic",
+  "date": "2026-10-12",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-finding-workflow-a9bd",
+  "run": "https://cursor.com/agents/bc-41191559-2830-5d71-882f-3ca93b719526",
+  "result": "5 HIGH",
+  "findings": [
+    {
+      "id": "DDC-LOOKAHEAD-CONSTRAINT-FORGE-2026-10-12",
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "title": "Unverified constraint resolution unlocks daily work including PERMIT/INSPECTION gates",
+      "description": "LookAheadScheduler.update_constraint() accepts any ConstraintStatus, including RESOLVED, with only free-text notes and no evidence, dual control, or role check. ConstraintType includes PERMIT and INSPECTION. analyze_make_ready() treats non-RESOLVED constraints as the only make-ready blockers (alongside predecessors). generate_daily_plan() schedules only activities with can_start=True. A responsible-party subcontractor or field user who can call update_constraint can mark permit/inspection/safety constraints resolved without obtaining them, causing unpermitted/uninspected work to appear on the daily coordination plan that operators implement as written.",
+      "impact": "Live work proceeds without required permits or inspections (excavation, hot work, structural hold points), creating utility-strike / collapse / OSHA willful-violation and fatality risk, plus fraudulent look-ahead PPC records.",
+      "attack_path": [
+        "Operator deploys LookAheadScheduler with multi-party constraint workflow (responsible_party set on constraints).",
+        "Activity A100 has ConstraintType.PERMIT (or INSPECTION) OPEN, needed_by this week.",
+        "analyze_make_ready marks A100 not_ready; generate_daily_plan excludes it.",
+        "Attacker (subcontractor / field coordinator named as responsible_party) calls update_constraint(constraint_id, ConstraintStatus.RESOLVED, notes='obtained').",
+        "No permit document, inspector sign-off, or second actor required.",
+        "analyze_make_ready sets can_start=True; generate_daily_plan includes the activity and crews mobilize."
+      ],
+      "evidence": [
+        "update_constraint sets status=RESOLVED and resolved_date with no verification (lines ~178-191).",
+        "ConstraintType includes PERMIT and INSPECTION (lines ~46-55).",
+        "analyze_make_ready: open_constraints = status != RESOLVED; else can_start=True (lines ~199-218).",
+        "generate_daily_plan filters act.can_start (lines ~258-265)."
+      ],
+      "why_not_duplicate": "Distinct from permit-tracking/compliance-tracker status forge: this is the look-ahead make-ready/daily-plan gate that commits crews to live work. Not the same as schedule-delay claims classification."
+    },
+    {
+      "id": "DDC-LOOKAHEAD-PRED-WINDOW-2026-10-12",
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "title": "Predecessors outside look-ahead window are treated as complete (all([])=True)",
+      "description": "analyze_make_ready only evaluates predecessors that exist in self.activities. import_from_master only imports activities overlapping the look-ahead window. For any predecessor outside that window, the comprehension yields an empty sequence and Python all([]) is True, so predecessor gates are vacuously satisfied. A PM under liquidated-damages pressure (or any actor controlling import) can produce Ready daily plans for work whose structural/MEP predecessors are incomplete or simply not imported.",
+      "impact": "Crews start successor work (e.g., finishes before fireproofing, steel before foundation acceptance) based on a false Ready signal \u2192 rework, structural/safety failures, and hidden delay exposure.",
+      "attack_path": [
+        "Master schedule: B depends on A; A is delayed/incomplete with planned finish before look-ahead start (or omitted from import).",
+        "import_from_master(look_ahead_weeks=2) imports B but not A.",
+        "analyze_make_ready for B: predecessors filtered with `if p in self.activities` \u2192 empty; all([]) \u2192 pred_complete True.",
+        "With no open constraints, B.can_start=True and appears on generate_daily_plan."
+      ],
+      "evidence": [
+        "pred_complete = all(... for p in act.predecessors if p in self.activities) (lines ~201-204).",
+        "import window filter: start <= look_ahead_end and finish >= look_ahead_start (lines ~137-138).",
+        "Validated: all([]) is True; activity with missing predecessor marked predecessor-complete."
+      ],
+      "why_not_duplicate": "Not previously reported for look-ahead-scheduler. Different root cause from constraint forge (vacuous predecessor check vs status write)."
+    },
+    {
+      "id": "DDC-RESOURCE-POOL-MAX-OVERBOOK-2026-10-12",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/resource-pool-optimizer/SKILL.md",
+      "title": "Capacity availability uses max overlapping quantity, not sum \u2014 enables overbooking shared equipment/crews",
+      "description": "_get_availability() computes allocated capacity as max(quantity) across overlapping allocations instead of summing concurrent demand. Multiple partial allocations that individually fit can sum above resource.capacity. allocate() and auto_allocate() both trust this check. AllocationStatus.MAINTENANCE is never applied as a hard gate. allocate() also skips the skill matching that find_available_resources() enforces.",
+      "impact": "Shared tower cranes, excavator fleets, or specialty crews are double-booked across projects \u2192 lift conflicts, idle crews waiting on phantom equipment, schedule collapse, and liquidated damages; unskilled allocation via allocate() bypass raises injury risk on welding/structural work.",
+      "attack_path": [
+        "Shared Excavator Fleet capacity=3.",
+        "Project A allocate(qty=2) for overlapping window \u2192 available becomes 3-max(2)=1.",
+        "Project B allocate(qty=1) \u2192 OK; availability still computed as 3-max(2,1)=1.",
+        "Project C allocate(qty=1) \u2192 OK because check still sees available=1.",
+        "Total concurrent demand 4 > capacity 3; planner/report shows allocations as successful.",
+        "Optional: call allocate() directly for welding request onto crew lacking skills (find_available would have filtered)."
+      ],
+      "evidence": [
+        "_get_availability: `allocated = max(allocated, alloc.quantity)` (lines ~206-215).",
+        "allocate() raises only if available < quantity using that function (lines ~231-237).",
+        "auto_allocate \u2192 allocate (lines ~254-286).",
+        "Validated script: after qty 2+1 overlapping on cap 3, availability still 1; third qty 1 accepted; total 4>3.",
+        "allocate() does not re-check required_skills (unlike find_available_resources lines ~185-187)."
+      ],
+      "why_not_duplicate": "Not the same as labor-allocation unbounded hours or resource-allocation-optimizer leveling. This is a concrete arithmetic bug in shared-pool capacity that falsely authorizes over-allocation. User asked whether resource-allocation was 'similar?' \u2014 this pool optimizer flaw is distinct."
+    },
+    {
+      "id": "DDC-LABOR-ASSIGN-STATUS-GATE-2026-10-12",
+      "severity": "HIGH",
+      "location": "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md",
+      "title": "assign_worker ignores TERMINATED/SICK/ON_LEAVE and only soft-warns on conflicts",
+      "description": "WorkerStatus includes ON_LEAVE, SICK, and TERMINATED, and get_workers_by_trade filters to AVAILABLE/ASSIGNED only, but assign_worker() never checks worker.status before creating an Assignment. Conflicting overlapping assignments only print a Warning and still append. Successful assign overwrites status to ASSIGNED, reactivating terminated/leave workers on the roster used by get_daily_roster.",
+      "impact": "Ghost/terminated workers billed on live activities (payroll/prevailing-wage fraud); sick or leave workers placed on hazardous site work; double-booked workers on concurrent activities \u2192 fatigue and missed coverage on safety-critical tasks. Distinct from previously reported unbounded hours_per_day.",
+      "attack_path": [
+        "GC marks worker W as TERMINATED or SICK in the shared LaborAllocation pool.",
+        "Subcontractor/superintendent who can call assign_worker(W, activity, ...) still succeeds (only existence check).",
+        "worker.status forced to ASSIGNED; get_daily_roster lists them for the activity.",
+        "Optionally assign same worker to two overlapping activities \u2014 conflicts warned but both kept."
+      ],
+      "evidence": [
+        "assign_worker: only `if worker_id not in self.workers: return None` then creates Assignment (lines ~136-160).",
+        "Conflicts: print Warning then still append (lines ~142-157).",
+        "worker.status = WorkerStatus.ASSIGNED overwrites TERMINATED/SICK/ON_LEAVE (line ~158).",
+        "get_workers_by_trade correctly excludes leave/sick/terminated (lines ~198-203) \u2014 inconsistent gate.",
+        "certifications field never consulted on assign."
+      ],
+      "why_not_duplicate": "Prior labor-allocation finding was unbounded hours_per_day (MEDIUM). This is a separate dead status/conflict interlock with payroll fraud and unfit-for-duty impact."
+    },
+    {
+      "id": "DDC-TOOLBOX-ATTENDANCE-FORGE-2026-10-12",
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Safety-Quality/toolbox-talk-generator/SKILL.md",
+      "title": "Toolbox talk attendance is attacker-supplied with no verification \u2014 OSHA training record fraud",
+      "description": "record_talk() accepts an arbitrary attendees list and persists TalkRecord used by get_attendance_summary() for compliance metrics. There is no signature capture, badge/RFID check, acknowledgment, or presenter/attendee separation. A foreman can record talks that never happened or pad attendance for workers who were absent.",
+      "impact": "Falsified OSHA/site-safety training records for audits and insurance; untrained workers appear trained and are assigned to high-hazard tasks \u2192 elevated injury/fatality and willful citation exposure.",
+      "attack_path": [
+        "Foreman generates or selects a toolbox talk id.",
+        "Calls record_talk(talk_id, ..., attendees=[entire crew roster]) without conducting the talk or with missing workers.",
+        "get_attendance_summary reports total_talks / unique_workers as compliant.",
+        "Records produced for auditor/insurance as proof of daily safety training."
+      ],
+      "evidence": [
+        "record_talk builds TalkRecord from caller-supplied attendees with no validation (lines ~435-458).",
+        "get_attendance_summary aggregates len(r.attendees) and unique names from those records (lines ~460-485).",
+        "No attestation, signature, or dual-control fields on TalkRecord."
+      ],
+      "why_not_duplicate": "Not in prior reported set (safety-inspection Pass forge, incident CA self-complete, compliance/permit). New surface: training attendance fraud."
+    }
+  ],
+  "near_misses": [
+    {
+      "skill": "equipment-telematics",
+      "note": "FAULT/CRITICAL/SHUTDOWN never changes OperatingStatus or grounds equipment \u2014 already considered FAULT-soft near-miss; no NEW chain beyond that."
+    },
+    {
+      "skill": "environmental-monitoring",
+      "note": "quality_flag unused (unlike sensor-data SUSPECT suppress); _get_compliance_status ignores TWA limits so noise/PM current status always COMPLIANT while alerts still fire; custom limits additive (prior near-miss). No multi-user spoof surface."
+    },
+    {
+      "skill": "material-tracking-iot",
+      "note": "MQTT process_message has no auth; storage alerts soft-only and never block usage \u2014 similar class to site-logistics storage soft-only; not re-filed."
+    },
+    {
+      "skill": "quality-control-workflow",
+      "note": "hold_point never enforced; conduct_inspection Pass + verify_remediation already covered by QC-pass\u2248safety and NCR verify findings."
+    },
+    {
+      "skill": "safety-compliance-checker",
+      "note": "Advisory checks only; trusts self-reported PPE/permits in activity dict; violation close is field mutation \u2014 soft, similar to compliance/permit."
+    },
+    {
+      "skill": "schedule-compression",
+      "note": "crash path hardcodes Low risk; no LD modeling; crash_duration operator-supplied \u2014 planning calculator without multi-user forge gate."
+    },
+    {
+      "skill": "delay-analysis",
+      "note": "Caller-chosen DelayType drives damages \u2014 similar to prior schedule-delay claims issues."
+    },
+    {
+      "skill": "resource-allocation-optimizer",
+      "note": "Detects overallocation but leveling is advisory; skills unused \u2014 similar/weaker than pool overbook finding."
+    },
+    {
+      "skill": "energy-simulation / prefab / progress-cv / risk-ml / drone / labor-productivity*",
+      "note": "Calculators or soft analytics without multi-user safety/money gates meeting bar."
+    },
+    {
+      "skill": "permit-tracking-automation",
+      "note": "Skipped as non-distinct from already-reported compliance/permit status forge."
+    }
+  ],
+  "skipped_already_reported": [
+    "sensor-data-aggregator SUSPECT/max quality gate",
+    "site-logistics crane/storage soft",
+    "equipment-fleet-manager maintenance/REPAIR",
+    "incident-reporting NEAR_MISS + self-complete CA",
+    "safety-inspection Pass forge + same-actor verify",
+    "permit-tracking / compliance-tracker",
+    "NCR verify_remediation",
+    "QC pass similar to safety",
+    "schedule-delay similar",
+    "digital-twin / enterprise-risk-aggregator",
+    "telematics FAULT soft",
+    "labor-allocation unbounded hours"
+  ]
+}
