@@ -1,0 +1,176 @@
+{
+  "hunt": "safety-schedule-permit-authz-underreviewed-rehunt",
+  "date": "2026-10-13",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-hunter-agent-eb88",
+  "run": "https://cursor.com/agents/bc-240d7ab9-c6c6-55a0-9313-5aa37d6f4429",
+  "result": "1 CRITICAL + 3 HIGH + 1 MEDIUM",
+  "findings": [
+    {
+      "id": "DDC-WEATHER-WIND-VIS-GATE-2026-10-13",
+      "severity": "CRITICAL",
+      "location": "5_DDC_Innovative/weather-impact-analysis/SKILL.md",
+      "title": "ActivityWeatherAnalyzer can_work ignores max_wind and min_visibility — authorizes crane/steel in unsafe weather",
+      "description": "WeatherThresholds defines max_wind and min_visibility for high-risk templates (crane_operations max_wind=30 / min_visibility=1.0, steel_erection max_wind=35, roofing max_wind=30). ActivityWeatherAnalyzer._calculate_impact only evaluates temperature and precipitation, then multiplies by primary_condition productivity factors. OpenWeatherMap parsing maps Mist/Fog→CLOUDY and never sets HIGH_WIND from wind_speed, so hourly wind_speed and visibility on DailyForecast/HourlyWeather are never consulted. ScheduleWeatherOptimizer.analyze_schedule / _analyze_activity call this gate to decide can_work and expected weather delays. Quick Start check_work_day correctly checks wind — the comprehensive path that agents are steered to does not.",
+      "impact": "Agents greenlight crane lifts and steel erection on clear/dry days with 65+ km/h winds or sub-1 km visibility → tip-over, load swing, struck-by fatality risk, and false 'no weather delay' schedule reports.",
+      "attack_path": [
+        "Deploy ActivityWeatherAnalyzer + ScheduleWeatherOptimizer against live forecast.",
+        "Forecast day: primary_condition=CLEAR, precip=0, temp OK; hourly wind_speed=65 km/h, visibility=0.2 km (or high wind not mapped to HIGH_WIND).",
+        "Schedule crane_operations / steel_erection for that day.",
+        "_calculate_impact returns can_work=True, productivity=1.0, issues=[].",
+        "analyze_schedule reports zero weather delay; crews/crane dispatched."
+      ],
+      "evidence": [
+        "WeatherThresholds.max_wind / min_visibility defined (lines ~329-336).",
+        "crane_operations thresholds max_wind=30, min_visibility=1.0 (lines ~413-418); steel_erection max_wind=35 (lines ~376-381).",
+        "_calculate_impact checks only temp_low/temp_high/precipitation_total + primary_condition factor — no wind/visibility (lines ~459-518).",
+        "HourlyWeather carries wind_speed and visibility (lines ~132-143) but unused in impact.",
+        "_map_condition maps Fog/Mist→CLOUDY; no HIGH_WIND from wind data (lines ~263-275).",
+        "ScheduleWeatherOptimizer._analyze_activity uses _calculate_impact for can_work (lines ~616-633).",
+        "PoC: clear/dry/65 km/h wind → crane and steel can_work=True, productivity=1.0."
+      ],
+      "why_not_duplicate": "Not in already-reported list. Distinct from Quick Start check_work_day (which does check wind). Prior hunt near-miss was schedule-compression Low-risk text only, not this weather gate."
+    },
+    {
+      "id": "DDC-WEATHER-INTERIOR-FAILOPEN-2026-10-13",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/weather-impact-analysis/SKILL.md",
+      "title": "Unknown activity_type fails open to interior_work (always can_work=True)",
+      "description": "ScheduleWeatherOptimizer._analyze_activity resolves the activity template via analyzer.activities.get(activity_type, ACTIVITY_TEMPLATES['interior_work']). Template keys are names like 'crane_operations', while ScheduledActivity also carries activity_id values like 'ACT-007'. Any misspelled, id-based, or custom activity_type silently falls back to interior_work (indoor=True), and _calculate_impact short-circuits to can_work=True / productivity=1.0 with no issues — including on extreme outdoor weather. suggest_reschedule correctly skips missing templates; analyze_schedule does not.",
+      "impact": "Outdoor critical work (crane, steel, roofing, concrete) scheduled under a wrong/unknown type is treated as weather-safe every day → unsafe mobilization and erased weather-delay exposure.",
+      "attack_path": [
+        "ScheduledActivity.activity_type set to 'ACT-007' (id) or 'crane' (typo) instead of 'crane_operations'.",
+        "analyze_schedule → _analyze_activity → .get miss → interior_work.",
+        "indoor=True → can_work=True for every forecast day regardless of wind/rain/temp.",
+        "expected_delay stays 0; daily plan proceeds."
+      ],
+      "evidence": [
+        "Fallback: activities.get(activity.activity_type, ACTIVITY_TEMPLATES.get('interior_work')) (lines ~616-620).",
+        "interior_work has indoor=True (lines ~427-434).",
+        "_calculate_impact early-return can_work=True when indoor (lines ~462-468).",
+        "PoC: lookup 'ACT-007' resolves to Interior Work → can_work=True in 65 km/h wind."
+      ],
+      "why_not_duplicate": "Separate fail-open from wind/visibility omission; same skill, different root cause (template resolution vs threshold evaluation)."
+    },
+    {
+      "id": "DDC-PERMIT-IS-VALID-MISSING-DOCS-2026-10-13",
+      "severity": "HIGH",
+      "location": "5_DDC_Innovative/permit-tracking-automation/SKILL.md",
+      "title": "check_permit_status.is_valid ignores missing required documents; update_status forges ISSUED",
+      "description": "check_permit_status computes missing_documents into alerts only; is_valid is true for any ACTIVE/ISSUED permit that is not past expiry — even with zero submitted documents. Separately, PermitTracker.update_status accepts any PermitStatus with no state machine, document completeness check, fee check, or reviewer authZ, so DRAFT→ISSUED mints permit_number and expiry_date. Agents using is_valid or status==ISSUED as the work-authorization gate will clear construction without a complete (or real) permit package.",
+      "impact": "Unpermitted building/electrical/excavation work proceeds under a false valid/issued signal → stop-work orders, fines, insurance denial, and safety exposure from work that never received jurisdiction review.",
+      "attack_path": [
+        "Path A: Construct/load Permit with status=ISSUED and submitted_documents=[]; required_documents still incomplete.",
+        "check_permit_status → alerts include missing_documents but is_valid=True.",
+        "Downstream agent/work-order gate trusts is_valid and authorizes site work.",
+        "Path B: create_application → update_status(..., PermitStatus.ISSUED) from DRAFT without submit_application or documents.",
+        "Application gains issued_date, permit_number, expiry; treated as issued for work release."
+      ],
+      "evidence": [
+        "missing_docs only appended to alerts (lines ~78-81).",
+        "is_valid = status in ACTIVE/ISSUED and not expired — no document check (lines ~87-88).",
+        "PoC: ISSUED + empty submitted_documents → is_valid True with missing_documents alert.",
+        "update_status sets APPROVED/ISSUED with no prior-status or doc gate (lines ~356-380).",
+        "submit_application alone checks documents; update_status bypasses it."
+      ],
+      "why_not_duplicate": "Prior hunt skipped permit as soft near-miss. Re-evaluated with complete chain: skill-owned is_valid work-authorization boolean returns True despite missing required docs, plus unconstrained ISSUED forge. Not look-ahead constraint forge (different skill/gate)."
+    },
+    {
+      "id": "DDC-COMPRESSION-FALSE-RECOVERY-2026-10-13",
+      "severity": "HIGH",
+      "location": "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md",
+      "title": "crash_schedule trusts caller is_critical and reports false achieved_reduction",
+      "description": "identify_critical_path does not compute float — it returns activities where caller-supplied is_critical is True. analyze_crash_options / crash_schedule only crash those flags. days_achieved increments once per crashed day on flagged activities even when project_duration (true CPM forward pass) does not drop. CompressionPlan.achieved_reduction uses days_achieved, not (original_duration - new_duration), and risk_assessment is hardcoded to 'Low risk - crashing uses proven methods'. Parallel-path schedules where the short path is mis-flagged critical produce claimed recovery with zero actual compression.",
+      "impact": "False schedule recovery hides liquidated-damages exposure, justifies wasted crash spend, and misleads owners/lenders that the deadline is recoverable when the true critical path was never shortened.",
+      "attack_path": [
+        "Network: activity A duration=20 (true longest path, is_critical=False); parallel B duration=10 (is_critical=True wrongly).",
+        "crash_schedule(target_days=5) crashes B only; days_achieved=5.",
+        "calculate_project_duration still 20 (A dominates).",
+        "CompressionPlan reports achieved_reduction=5, new_project_duration=20, risk_assessment='Low risk…'.",
+        "PM/owner accepts recovery plan; no real days gained."
+      ],
+      "evidence": [
+        "identify_critical_path: critical = [act.id for act in ... if act.is_critical] — no float calc (lines ~166-174).",
+        "add_activity accepts caller is_critical (lines ~105-119).",
+        "analyze_crash_options filters act.is_critical (lines ~180-181).",
+        "crash_schedule: days_achieved += 1 per crash day; achieved_reduction=days_achieved (lines ~227, 245-252).",
+        "risk_assessment hardcoded Low risk (line ~252).",
+        "PoC: claimed achieved_reduction=5, actual duration 20→20 (real reduction=0)."
+      ],
+      "why_not_duplicate": "Prior hunt only noted hardcoded Low-risk string as near-miss. This is the complete false-recovery chain via trusted is_critical + achieved_reduction not tied to CPM duration delta."
+    },
+    {
+      "id": "DDC-FLEET-DOUBLE-ASSIGN-2026-10-13",
+      "severity": "MEDIUM",
+      "location": "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md",
+      "title": "assign_equipment never checks current status — double-books IN_USE assets",
+      "description": "assign_equipment appends a new Assignment and sets status=IN_USE without requiring status==AVAILABLE. An asset already IN_USE (or any other status) can be assigned to a second project/location the same day. get_available_equipment correctly filters AVAILABLE, but the mutating assign path does not. Distinct from already-reported schedule_maintenance/REPAIR never grounding equipment.",
+      "impact": "Same tower crane/excavator committed to two sites simultaneously → lift conflicts, phantom utilization, and crews mobilizing without equipment.",
+      "attack_path": [
+        "assign_equipment(crane, Site A) → status IN_USE.",
+        "assign_equipment(crane, Site B) succeeds; assignments list length 2; status remains IN_USE.",
+        "Both project plans show the crane assigned; only one physical asset exists."
+      ],
+      "evidence": [
+        "assign_equipment: no status==AVAILABLE guard (lines ~105-125).",
+        "get_available_equipment filters AVAILABLE (lines ~144-149) but assign does not use it.",
+        "PoC: two concurrent assignments on CR1 to Site A and Site B."
+      ],
+      "why_not_duplicate": "User excluded only Maintenance/REPAIR grounding. This is absence of IN_USE/AVAILABLE check on assign (double-book), not the REPAIR status bug. Distinct from resource-pool-optimizer max-not-sum (different skill)."
+    }
+  ],
+  "discarded_near_misses": [
+    {
+      "item": "QC hold_point never enforced / conduct_inspection caller pass",
+      "reason": "hold_point stored but no can_proceed/release API that wrongly returns true — missing control without a bypassable authorization function; prior near-miss retained."
+    },
+    {
+      "item": "NCR verify_remediation self-close",
+      "reason": "No evidence/dual-control check, but overlaps already-reported incident self-complete CA pattern; no distinct work-order gate shown."
+    },
+    {
+      "item": "safety-inspection-checklist critical flag unused in score / signed_off dead",
+      "reason": "Score can stay high with critical fails; signed_off never set — advisory metrics, no work-clearance boolean."
+    },
+    {
+      "item": "safety-compliance-checker advisory only",
+      "reason": "check_work_activity returns ComplianceCheck list; no hard stop/authorize API tying NON_COMPLIANT to work release."
+    },
+    {
+      "item": "compliance-tracker update_status forge ACTIVE",
+      "reason": "critical_missing is reporting only; no is_valid/can_start work gate (unlike permit is_valid)."
+    },
+    {
+      "item": "equipment-telematics CRITICAL fault soft",
+      "reason": "Fault logged but operating_status stays OPERATING; no is_safe_to_operate gate — prior soft near-miss."
+    },
+    {
+      "item": "environmental-monitoring TWA arithmetic mean / now-based window",
+      "reason": "Display/alert accuracy issue; no stop-work authorization path."
+    },
+    {
+      "item": "delay-analysis DelayType caller trust",
+      "reason": "Claims classification trust previously judged near-miss; no new work-authorization chain beyond recommended_extension dollars."
+    },
+    {
+      "item": "digital-twin-sync unauthenticated WebSocket status_update",
+      "reason": "No auth on status_update/update, but no payment/work-order consumer in-skill — progress display integrity only."
+    },
+    {
+      "item": "enterprise-risk / portfolio / risk-assessment-ml / progress-cv / open-estimate / labor-productivity / prefab",
+      "reason": "Analytics/estimation; no hard safety or permit authorization gates with complete exploit chains."
+    },
+    {
+      "item": "resource-allocation-optimizer trusted is_critical leveling",
+      "reason": "Leveling can leave unresolved overallocations without flagging; incomplete result quality, not a false authorize boolean."
+    },
+    {
+      "item": "Field safety-inspection overall Pass with open CRITICAL",
+      "reason": "overall_rating field unused; no complete Pass issuance API overriding open hazards."
+    },
+    {
+      "item": "Already reported: look-ahead forge/preds, pool max-overbook, labor TERMINATED assign, toolbox attendance, fleet REPAIR, sensor SUSPECT, site-logistics, incident type",
+      "reason": "Excluded per hunt brief."
+    }
+  ]
+}
