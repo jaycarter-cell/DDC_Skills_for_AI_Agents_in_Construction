@@ -1,0 +1,123 @@
+{
+  "hunt": "safety-quality-business-logic-rehunt",
+  "date": "2026-10-14",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-findings-memory-23b9",
+  "commit": "PENDING",
+  "run": "https://cursor.com/agents/bc-1ab5b596-b609-5d27-823d-8a3b8a91693b",
+  "result": "2 HIGH",
+  "scope": [
+    "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/incident-reporting/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/safety-inspection-checklist/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/toolbox-talk-generator/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/compliance-tracker/SKILL.md",
+    "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md",
+    "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md",
+    "1_DDC_Toolkit/Document-Control/as-built-documentation/SKILL.md",
+    "5_DDC_Innovative/defect-detection-ai/SKILL.md",
+    "5_DDC_Innovative/environmental-monitoring/SKILL.md",
+    "5_DDC_Innovative/permit-tracking-automation/SKILL.md",
+    "4_DDC_Curated/Quality-Assurance/verification-loop-construction/SKILL.md"
+  ],
+  "skipped_already_reported": [
+    "safety-compliance-checker hot-work/confined-space fail-open / case-sensitive activity names (prompt)",
+    "permit-tracking is_valid missing documents + update_status ISSUED forge + phantom docs + inspection without ISSUED",
+    "weather-impact interior fail-open / wind-vis gates (prompt)",
+    "clash-detection silent geometry skip (prompt)",
+    "energy-simulation empty envelope compliant (prompt)",
+    "environmental-monitoring TWA-only display COMPLIANT (PR#2)",
+    "environmental-monitoring WARNING blocks EXCEEDANCE 1h (PR#8)",
+    "quality-control acceptance_criteria never evaluated PASSED (PR#6 CRITICAL)",
+    "quality-control NCR auto-ACCEPTED + verify without evidence (PR#2)",
+    "incident-reporting NEAR_MISS underclassify TRIR (PR#12)",
+    "toolbox-talk attendee forge (PR#13)",
+    "warranty update_claim_status APPROVED + cost_covered (PR#11); expiring always empty (PR#2); issue_date before start (PR#6)",
+    "as-built-tracker review_submission NOT_STARTED approve (PR#3)",
+    "as-built-documentation empty FINAL / vacuous markups (PR#7 skip)"
+  ],
+  "findings": [
+    {
+      "id": "DDC-ENV-BACKDATED-TWA-ALERT-SUPPRESS-2026-10-14",
+      "severity": "HIGH",
+      "title": "environmental-monitoring TWA alert path fails open when reading timestamp is outside averaging window",
+      "location": "5_DDC_Innovative/environmental-monitoring/SKILL.md",
+      "evidence_lines": [213, 249, 254, 257, 258, 275, 279, 282],
+      "quoted_functions": [
+        "EnvironmentalMonitor.record_reading",
+        "EnvironmentalMonitor._check_limits",
+        "EnvironmentalMonitor._calculate_twa"
+      ],
+      "description": "_calculate_twa always anchors the averaging window to datetime.now(), not the reading timestamp. record_reading accepts caller/sensor timestamps. For any TWA limit (noise 8h/0.25h, PM24h, CO 8h), if the reading's timestamp is older than averaging_period_hours, the filter yields no samples, _calculate_twa returns None, and _check_limits `continue`s without creating an alert — while the hazardous reading remains stored. Control with timestamp=now and value=100 dBA yields THRESHOLD_EXCEEDANCE against the 85 dBA OSHA TWA; the same 100 dBA with timestamp=now-10h yields zero alerts. Instantaneous limits (vibration/CO ceiling) still fire, proving the fail-open is specific to the TWA branch.",
+      "impact": "Delayed MQTT/backfill or attacker-spoofed timestamps suppress real-time OSHA/EPA exceedance alerts for noise and dust. Crews keep working under unsafe TWA conditions with a silent monitor.",
+      "attack_path": [
+        "Add station monitoring ParameterType.NOISE (or PM10/CO TWA).",
+        "Ingest reading value=100 dBA (or equivalent exceedance) with timestamp older than the limit's averaging_period_hours (e.g. now-10h for noise).",
+        "_check_limits → _calculate_twa → None → continue; alerts list stays empty.",
+        "Dashboard consumers see no THRESHOLD_EXCEEDANCE → work proceeds.",
+        "Contrast: same value with timestamp=now creates exceedance alert immediately."
+      ],
+      "why_not_duplicate": "Distinct from already-reported (1) _get_compliance_status TWA-only display COMPLIANT and (2) WARNING suppressing later EXCEEDANCE for 1 hour. This is the alert-generation TWA branch failing open on empty windows via now()-anchored cutoff / backdated or delayed timestamps.",
+      "key_snippets": [
+        "timestamp=timestamp or datetime.now()",
+        "check_value = self._calculate_twa(...)",
+        "if check_value is None:\n                    continue",
+        "cutoff = datetime.now() - timedelta(hours=hours)",
+        "if not readings:\n            return None",
+        "PoC: control now@100dBA → exceedance; attack now-10h@100dBA → 0 alerts"
+      ],
+      "poc": {
+        "control_noise_100_now_alerts": 1,
+        "attack_noise_100_minus_10h_alerts": 0,
+        "vibration_instant_still_alerts_when_backdated": true
+      }
+    },
+    {
+      "id": "DDC-DEFECT-SEVERITY-IGNORES-PHYSICAL-MM-2026-10-14",
+      "severity": "HIGH",
+      "title": "defect-detection-ai computes dimensions_mm then ignores them for severity → structural cracks rated MINOR",
+      "location": "5_DDC_Innovative/defect-detection-ai/SKILL.md",
+      "evidence_lines": [233, 236, 238, 251, 256, 269, 516, 538, 557, 565],
+      "quoted_functions": [
+        "DefectDetectionModel.detect",
+        "DefectDetectionModel._classify_severity",
+        "DefectInspectionSystem._assess_overall_condition",
+        "DefectInspectionSystem._generate_recommendations"
+      ],
+      "description": "When pixels_per_mm is supplied, detect() calculates dimensions_mm from the bbox but severity is assigned solely by _classify_severity using bbox.area/image_area ratios (e.g. crack critical only if ratio≥0.10). A 100mm×10mm structural crack (far beyond ACI 224R 1mm critical width) occupying ~0.03% of a 4000×3000 frame is stamped MINOR. _assess_overall_condition then returns 'Good - Minor issues only' and _generate_recommendations emits sealant guidance instead of structural-engineer assessment.",
+      "impact": "False-negative severity downgrade lets unsafe structural defects pass QC as minor cosmetic issues → cover-up/continue work without engineering hold.",
+      "attack_path": [
+        "Capture wide-field photo of a wide crack (or supply pixels_per_mm so physical size is large while bbox/image ratio stays <0.02).",
+        "DefectDetectionModel.detect(..., pixels_per_mm=2.0) stores dimensions_mm=(100,10) but severity=MINOR from ratio.",
+        "DefectInspectionSystem overall_condition='Good - Minor issues only'; recommendations='Seal minor crack(s)'.",
+        "QC/closeout treats element as acceptable to proceed."
+      ],
+      "why_not_duplicate": "Prior discard was SimpleDefectClassifier severity-from-confidence heuristic. This is the production DefectDetectionModel path that computes physical scale then ignores it for the severity SoR driving condition/recommendations.",
+      "key_snippets": [
+        "if pixels_per_mm:\n                ...\n                dimensions_mm = (width_mm, height_mm)",
+        "severity = self._classify_severity(defect_type, bbox, image.size)",
+        "defect_ratio = bbox.area / image_area",
+        "return \"Good - Minor issues only\"",
+        "Seal {len(group)} minor crack(s) with appropriate sealant.",
+        "PoC: 100mm×10mm crack → MINOR + SEALANT_ONLY"
+      ],
+      "poc": {
+        "physical_mm": [100.0, 10.0],
+        "image_ratio": 0.000333,
+        "severity": "minor",
+        "overall_condition": "Good - Minor issues only",
+        "recommendation": "SEALANT_ONLY"
+      }
+    }
+  ],
+  "discarded_near_misses": [
+    "quality-control hold_point stored but never enforced / ON_HOLD unused — prior discard (dead field; no can_proceed fail-open API); acceptance_criteria PASSED already CRITICAL.",
+    "safety-inspection critical items status='na' → score 100; ChecklistItem.critical unused — prior Pass/critical-score discard class.",
+    "compliance-tracker ACTIVE/NOT_APPLICABLE forge — prior compliance soft / permit ISSUED sibling discard.",
+    "toolbox-talk generate_daily_talk uses only topics[0] — topic-selection quality; attendance forge already HIGH.",
+    "verification-loop CSI/CWICR invalid → WARN not FAIL; many helpers are stubs — incomplete framework, no concrete SoR gate PoC.",
+    "warranty/as-built/permit/incident/NCR — already reported (see skipped list).",
+    "defect SimpleDefectClassifier confidence→severity — prior model-quality discard.",
+    "env VOC/CO2 enum with empty REGULATORY_LIMITS — config gap; weaker than TWA window fail-open."
+  ]
+}
