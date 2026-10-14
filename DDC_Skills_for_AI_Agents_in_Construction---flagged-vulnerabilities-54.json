@@ -1,256 +1,275 @@
 {
-  "hunt": "book-toolkit-leftover-skills-injection-logic-rehunt",
+  "hunt": "innovative-insights-leftover-logic-injection-auth-rehunt",
   "date": "2026-10-14",
   "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
   "branch": "cursor/vulnerability-findings-memory-23b9",
   "commit": "4b25de0ac9af5adbd210a58d4b2670f29fcd9693",
-  "run": "https://cursor.com/agents/bc-63cb7386-7c85-5fe9-acd5-d91fd1124518",
-  "result": "1 CRITICAL + 6 HIGH",
+  "run": "https://cursor.com/agents/bc-9164b686-b31d-57b5-abce-a565e70c986e",
+  "result": "6 HIGH",
   "scope": [
-    "2_DDC_Book/3.1-Cost-Estimation/estimate-builder/SKILL.md",
-    "2_DDC_Book/3.1-Cost-Estimation/cost-estimation-resource/SKILL.md",
-    "2_DDC_Book/3.1-Cost-Estimation/historical-cost-analyzer/SKILL.md",
-    "2_DDC_Book/3.1-Cost-Estimation/unit-price-database-manager/SKILL.md",
-    "2_DDC_Book/3.2-QTO-Auto-Estimates/auto-estimate-generator/SKILL.md",
-    "2_DDC_Book/3.2-QTO-Auto-Estimates/bim-qto/SKILL.md",
-    "2_DDC_Book/3.2-QTO-Auto-Estimates/qto-report/SKILL.md",
-    "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/resource-leveler/SKILL.md",
-    "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/lifecycle-carbon-calculator/SKILL.md",
-    "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md",
-    "2_DDC_Book/4.3-BIM-Validation-Pipeline/ids-checker/SKILL.md",
-    "2_DDC_Book/4.2-ETL-Automation/airflow-dag/SKILL.md",
-    "2_DDC_Book/2.3-Pandas-LLM-Analysis/rag-construction/SKILL.md",
-    "2_DDC_Book/2.3-Pandas-LLM-Analysis/llm-data-automation/SKILL.md",
-    "1_DDC_Toolkit/Field-Operations/daily-report-generator/SKILL.md",
-    "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md",
-    "4_DDC_Curated/Data-Validation/input-validation/SKILL.md",
-    "4_DDC_Curated/Document-Generation/email-construction/SKILL.md",
-    "4_DDC_Curated/Document-Generation/xlsx-construction/SKILL.md"
+    "5_DDC_Innovative/digital-twin-sync/SKILL.md",
+    "5_DDC_Innovative/drone-site-survey/SKILL.md",
+    "5_DDC_Innovative/sensor-data-aggregator/SKILL.md",
+    "5_DDC_Innovative/equipment-telematics/SKILL.md",
+    "5_DDC_Innovative/material-tracking-iot/SKILL.md",
+    "5_DDC_Innovative/contractor-matching-ai/SKILL.md",
+    "5_DDC_Innovative/capacity-planning/SKILL.md",
+    "5_DDC_Innovative/change-order-analysis/SKILL.md",
+    "5_DDC_Innovative/labor-productivity-analytics/SKILL.md",
+    "5_DDC_Innovative/resource-pool-optimizer/SKILL.md",
+    "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+    "5_DDC_Innovative/enterprise-risk-aggregator/SKILL.md",
+    "5_DDC_Innovative/risk-assessment-ml/SKILL.md",
+    "5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+    "5_DDC_Innovative/open-construction-estimate/SKILL.md",
+    "5_DDC_Innovative/bim-visual-programming-automation/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/critical-path-analyzer/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/delay-analysis/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md"
   ],
   "skipped_already_reported": [
-    "erp-data-extractor SQLi",
-    "etl-pipeline SSRF",
-    "ifc-qto-extraction unauth webhook RCE",
-    "ml-model-retrainer pickle",
-    "CAD converter subprocess list argv",
-    "n8n webhooks",
-    "CWICR quantity-matcher unit fail-open",
-    "cost-calculator regex",
-    "schedule-integrator EVM",
-    "report XSS",
-    "assembly overwrite"
+    "schedule-compression false recovery (is_critical trust / achieved_reduction)",
+    "fleet double-assign IN_USE",
+    "prefab blocks_modules ignored",
+    "clash silent geometry skip",
+    "weather unused max_wind/min_visibility + interior fail-open",
+    "look-ahead RESOLVED forge + vacuous predecessors outside window",
+    "resource-pool max-vs-sum overbook + allocate() skill skip",
+    "delay-analysis EOT/damages forge (DDC-INSIGHTS-DELAY-EOT-FORGE-2026-10-14)",
+    "CPA zero-duration / simulate_delay(negative) false-recovery class",
+    "telematics FAULT soft / sensor SUSPECT prior discard class",
+    "open-estimate contractor-underbid / negative qty calculator discard",
+    "risk-assessment-ml joblib/pickle operator-path discard"
   ],
   "findings": [
     {
-      "id": "DDC-IDS-ENTITY-APPLICABILITY-SKIP-2026-10-14",
-      "severity": "CRITICAL",
-      "title": "IDS checker applicability never matches IFC subtypes → COMPLIANT with unchecked elements",
-      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/ids-checker/SKILL.md",
-      "evidence_lines": [256, 264, 266, 275, 280, 286, 377, 399, 400],
-      "description": "_matches_applicability uses substring `entity_filter not in element_type`. Standard COBie/LOD helpers register applicability as 'IfcElement', but BIM elements are typed IfcDoor/IfcWall/IfcSlab — 'IfcElement' is not a substring of those names, so every Component/Element requirement is skipped. check_model then sets status='COMPLIANT' when fail_count==0. Empty models and MATERIAL/ATTRIBUTE/RELATION requirement types (returned as NOT_APPLICABLE) also yield COMPLIANT with zero FAILs.",
-      "impact": "Non-compliant BIM deliveries (doors/walls missing required COBie Name/TypeName, empty models, material-only specs) are marked COMPLIANT and can pass automated handover/IDS gates.",
-      "attack_path": [
-        "Create COBie spec via create_standard_cobie_spec() (Component reqs apply to entity=IfcElement).",
-        "Submit model with IfcDoor/IfcWall elements missing COBie_Component properties (or empty element list).",
-        "_matches_applicability skips all IfcElement rules; only IfcSpace-like exact substring matches run.",
-        "check_model returns status=COMPLIANT / fail_count=0 → delivery accepted."
+      "id": "DDC-INNOV-CONTRACTOR-CERT-VALIDUNTIL-FAILOPEN-2026-10-14",
+      "severity": "HIGH",
+      "title": "contractor-matching-ai treats missing cert/license valid_until as date.max → expired prequal bypass",
+      "location": "5_DDC_Innovative/contractor-matching-ai/SKILL.md",
+      "evidence_lines": [307, 331, 337, 342],
+      "quoted_functions": [
+        "ContractorMatchingEngine._filter_eligible",
+        "ContractorMatchingEngine.find_matches",
+        "BidEvaluator.evaluate_bids"
       ],
-      "why_not_duplicate": "Not ifc-qto webhook RCE or prior Innovative clash fail-open. New IDS gate on leftover ids-checker applicability/inheritance logic.",
+      "description": "_filter_eligible builds eligible cert/license sets with `c.get('valid_until', date.max) >= date.today()` (same for licenses). Attacker-controlled ContractorProfile certifications/licenses that omit `valid_until` (or supply only name/type) are treated as never-expiring. Control profiles with the same certs dated in the past are correctly rejected. No insurance_coverage hard gate; safety scores trust self-reported fatality_count/incident_rate. Forged profiles then rank in find_matches / BidEvaluator recommendations.",
+      "impact": "Unlicensed / expired-cert contractors pass prequalification and surface as top matches / Strongly Recommended bids → award to unqualified parties and safety/compliance exposure.",
+      "attack_path": [
+        "Register ContractorProfile with required cert names and license types but omit valid_until keys; set operating_regions, specializations, workload <95, self-reported fatality_count=0.",
+        "Submit ProjectRequirements requiring those certs/licenses.",
+        "_filter_eligible includes attacker (date.max); control with valid_until=2020-01-01 is excluded.",
+        "find_matches / evaluate_bids returns attacker with competitive total_score for award recommendation."
+      ],
+      "why_not_duplicate": "Not open-estimate underbid. Not previously filed contractor findings. Distinct privilege/prequal fail-open on the eligibility gate itself via date.max default.",
       "key_snippets": [
-        "if entity_filter not in element_type: return False",
-        "return True",
-        "status': 'COMPLIANT' if fail_count == 0 else 'NON-COMPLIANT'",
-        "add_property_requirement(..., 'IfcElement', ...)",
-        "return ValidationResult(..., result=CheckResult.NOT_APPLICABLE, ...)"
+        "contractor_certs = set(c['name'] for c in contractor.certifications if c.get('valid_until', date.max) >= date.today())",
+        "contractor_licenses = set(l['type'] for l in contractor.licenses if l.get('valid_until', date.max) >= date.today())",
+        "PoC: Shadow Prefab LLC eligible score=64; Honest Co with dated-expired certs excluded"
       ],
       "poc": {
-        "elements": ["IfcSpace(ok)", "IfcDoor(missing props)", "IfcWall(missing props)"],
-        "total_checks": 1,
-        "failed": 0,
-        "status": "COMPLIANT",
-        "empty_model_status": "COMPLIANT",
-        "material_req_result": "n/a → COMPLIANT"
+        "attack_missing_valid_until_eligible": true,
+        "control_expired_dated_eligible": false,
+        "attack_match_score": 64.0,
+        "attack_safety_score_self_reported_clean": 100
       }
     },
     {
-      "id": "DDC-EMAIL-ATTACHMENT-PATH-TRAVERSAL-2026-10-14",
+      "id": "DDC-INNOV-ENTERPRISE-RISK-PROB-FAILOPEN-2026-10-14",
       "severity": "HIGH",
-      "title": "ConstructionEmailSender opens attacker-controlled attachment paths and SMTP-exfiltrates file bytes",
-      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md",
-      "evidence_lines": [33, 76, 431, 435, 443, 444, 460, 468],
-      "description": "generate_rfi_response_email passes rfi.attachments through to email_data. ConstructionEmailSender.send does open(attachment_path,'rb') with no root jail, then MIME-attaches and server.sendmail(...). Integration example loads RFI fields from Excel — an attacker who can influence the attachments column (or any agent tool arg) points at /etc/passwd, .env, or SSH keys. Modern CPython blocks Subject/To CRLF header injection (HeaderParseError), but the file-read→email chain succeeds.",
-      "impact": "Arbitrary local file read and exfiltration to attacker-chosen SMTP recipients (to/cc lists).",
-      "attack_path": [
-        "Poison RFI log Excel attachments cell (or tool arg) with absolute path e.g. /var/secrets/api.env.",
-        "Pipeline builds RFIResponse(attachments=[path]) → generate_rfi_response_email.",
-        "ConstructionEmailSender.send open()s the path, base64-attaches contents, sendmail to recipients.",
-        "Attacker receives secret material as email attachment."
+      "title": "enterprise-risk-aggregator trusts caller probability with no clamp → CRITICAL risks score LOW / VaR=0",
+      "location": "5_DDC_Innovative/enterprise-risk-aggregator/SKILL.md",
+      "evidence_lines": [90, 155, 180, 190, 310, 323, 324, 336],
+      "quoted_functions": [
+        "ProjectRisk.__post_init__",
+        "EnterpriseRiskAggregator.add_risk",
+        "EnterpriseRiskAggregator.import_project_risks",
+        "EnterpriseRiskAggregator.calculate_var",
+        "EnterpriseRiskAggregator.generate_portfolio_profile"
       ],
-      "why_not_duplicate": "Not report XSS or n8n webhook RCE. Distinct curated email skill path-traversal→SMTP exfil chain.",
+      "description": "add_risk / import_project_risks accept attacker-chosen probability with no validation (allowed 0, negative, >1). score=probability*impact and level thresholds use that product only. A $10M structural-collapse risk at p=0.8 is CRITICAL (score $8M); the same impact at p=0 is LOW with score=0. generate_portfolio_profile expected_loss and Monte Carlo VaR95 then collapse to $0, hiding systemic portfolio exposure.",
+      "impact": "Malicious or negligent project risk registers erase enterprise CRITICAL safety/financial risks from portfolio reports, VaR, and mitigation priorities → false risk appetite and unfunded contingencies.",
+      "attack_path": [
+        "Call import_project_risks with category=safety, impact=10000000, probability=0.0 (or 0.01).",
+        "generate_portfolio_profile() → level=LOW, expected_loss=0, var_95=0.",
+        "Contrast control p=0.8 → CRITICAL, expected_loss=8000000, VaR≈10000000.",
+        "Portfolio dashboard / mitigation priorities omit the risk."
+      ],
+      "why_not_duplicate": "Not cwicr risk min/max. Not weather gates. Prompt-targeted fail-open risk scoring with end-to-end portfolio VaR impact; no prior finding ID on this skill.",
       "key_snippets": [
-        "attachments: List[str] = None",
-        "'attachments': rfi.attachments or []",
-        "with open(attachment_path, 'rb') as f:",
-        "server.sendmail(msg['From'], recipients, msg.as_string())"
+        "self.score = self.probability * self.impact",
+        "probability=r['probability']  # import_project_risks, unvalidated",
+        "if random.random() < risk.probability: sim_loss += risk.impact",
+        "PoC: p=0 → LOW score=0 expected_loss=0 VaR95=0 vs p=0.8 CRITICAL"
       ],
       "poc": {
-        "attachment_path": "/tmp/.../secret.env",
-        "secret": "API_KEY=supersecret",
-        "present_in_mime_base64": true
+        "honest_p": 0.8,
+        "honest_level": "CRITICAL",
+        "honest_expected_loss": 8000000,
+        "attack_p": 0.0,
+        "attack_level": "LOW",
+        "attack_expected_loss": 0,
+        "attack_var95": 0
       }
     },
     {
-      "id": "DDC-CARBON-ASSEMBLY-SILENT-SKIP-2026-10-14",
+      "id": "DDC-INNOV-SENSOR-STRUCTURAL-THRESHOLD-FAILOPEN-2026-10-14",
       "severity": "HIGH",
-      "title": "Lifecycle carbon calculator silently drops unknown assembly_id quantities → undercount",
-      "location": "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/lifecycle-carbon-calculator/SKILL.md",
-      "evidence_lines": [237, 240, 252, 159, 176, 177],
-      "description": "calculate_project_carbon, when qty contains assembly_id, only adds carbon if assembly_id in self.assemblies; otherwise the quantity is ignored with no error/warning. Typos, BIM mapping misses, or attacker-supplied bogus assembly IDs zero-out whole structural packages. Default stage loop also includes Module D credits (often negative), further lowering totals when materials resolve.",
-      "impact": "Embodied-carbon reports / LEED-style intensity figures understate emissions; projects can appear Best Practice when major assemblies were never counted.",
-      "attack_path": [
-        "Supply project quantities with assembly_id values not present in calculator.assemblies (typo or crafted).",
-        "calculate_project_carbon skips those rows; total_embodied_carbon omits them.",
-        "benchmark_comparison/_get_rating uses understated carbon_per_area → inflated green rating."
+      "title": "sensor-data-aggregator DEFAULT_THRESHOLDS omit STRAIN/TILT/PRESSURE → catastrophic readings never alert",
+      "location": "5_DDC_Innovative/sensor-data-aggregator/SKILL.md",
+      "evidence_lines": [60, 61, 62, 130, 137, 152, 166, 192, 232],
+      "quoted_functions": [
+        "SensorDataAggregator.register_sensor",
+        "SensorDataAggregator.ingest_reading",
+        "SensorDataAggregator._check_thresholds"
       ],
-      "why_not_duplicate": "Not CWICR assembly overwrite. New carbon undercount fail-open on leftover lifecycle-carbon-calculator.",
+      "description": "SensorType includes PRESSURE/STRAIN/TILT (structural integrity) but DEFAULT_THRESHOLDS only covers temperature/humidity/vibration/noise/AQI/dust/gas. register_sensor(thresholds=None) sets thresholds={}. ingest_reading marks quality GOOD (no min/max) and _check_thresholds never fires without warning/critical keys. 45° tilt or extreme strain produce zero alerts while GAS control at 80ppm correctly alerts CRITICAL. Separately, any authenticated-or-not ingest of spoofed-safe gas values suppresses alerts (IoT spoof accept).",
+      "impact": "Structural / tilt / pressure monitoring deployed as written is alert-blind → missed collapse/settlement indicators; spoofed-safe gas readings silence confined-space CRITICAL alarms.",
+      "attack_path": [
+        "Register TILT/STRAIN sensors with default thresholds (as skill Quick Start / register_sensor).",
+        "ingest_reading(TILT, 45.0) and ingest_reading(STRAIN, 5000) → alerts=[].",
+        "Optional: ingest_reading(GAS, 5) while real atmosphere is hazardous → no CRITICAL.",
+        "Dashboard get_zone_summary / generate_report show healthy with no alerts."
+      ],
+      "why_not_duplicate": "Prior discard was SUSPECT quality still storing out-of-range env readings. This is missing default gates for structural SensorTypes so CRITICAL never exists — same class as weather unused max_wind, different skill/sink.",
       "key_snippets": [
-        "if 'assembly_id' in qty:",
-        "if qty['assembly_id'] in self.assemblies:",
-        "total_carbon += scaled_carbon",
-        "elif stage == LifecycleStage.D: carbon = material.carbon_d * quantity"
+        "STRAIN = \"strain\"; TILT = \"tilt\"; PRESSURE = \"pressure\"",
+        "DEFAULT_THRESHOLDS = { TEMPERATURE, HUMIDITY, VIBRATION, NOISE, AIR_QUALITY, DUST, GAS }  # no structural",
+        "thresholds = self.DEFAULT_THRESHOLDS.get(sensor_type, {})",
+        "PoC: tilt=45 / strain=5000 → 0 alerts; gas=80 → CRITICAL"
       ],
       "poc": {
-        "unknown_assemblies_total": 0,
-        "same_multipliers_if_registered": 5000000,
-        "module_d_included_by_default": true
+        "tilt_thresholds": {},
+        "strain_thresholds": {},
+        "tilt_45_alerts": 0,
+        "strain_5000_alerts": 0,
+        "gas_80_alerts": 1,
+        "gas_spoof_5_alerts": 0
       }
     },
     {
-      "id": "DDC-AUTOEST-MISSING-PROP-FAILOPEN-2026-10-14",
+      "id": "DDC-INNOV-CO-NEG-COST-UNDERCOUNT-DRAFT-APPROVE-2026-10-14",
       "severity": "HIGH",
-      "title": "Auto-estimate pricing rules treat missing QTO properties as satisfied conditions",
-      "location": "2_DDC_Book/3.2-QTO-Auto-Estimates/auto-estimate-generator/SKILL.md",
-      "evidence_lines": [148, 152, 157, 161, 165, 170, 184],
-      "description": "find_matching_rule only evaluates a condition when the property key exists on the QTO item. If BIM export omits material/thickness (common), material=='Drywall' and thickness_min checks are skipped and match stays True. Among matching rules, the most-conditioned rule wins — a Drywall rule with an extra thickness_min can beat a Masonry rule and price masonry walls at drywall rates. generate_estimate multiplies quantity * unit_cost with no unit conversion gate.",
-      "impact": "Systematic estimate underpricing (PoC: 1000 SF masonry wall → $45k drywall instead of $125k).",
-      "attack_path": [
-        "Export QTO without material/thickness properties (or strip them).",
-        "Load rules including cheap Drywall (with thickness_min) and expensive Masonry.",
-        "find_matching_rule returns Drywall rule; generate_estimate prices at $45/SF.",
-        "Bid/budget exported via export_to_excel understates cost."
+      "title": "change-order-analysis allows negative CostBreakdown totals and approve() from DRAFT → undercounted impact + forged approval",
+      "location": "5_DDC_Innovative/change-order-analysis/SKILL.md",
+      "evidence_lines": [112, 121, 122, 240, 243, 250, 251, 258, 280],
+      "quoted_functions": [
+        "CostBreakdown.total",
+        "ChangeOrderManager.update_cost",
+        "ChangeOrderManager.approve",
+        "ChangeOrderManager.get_summary"
       ],
-      "why_not_duplicate": "Not CWICR quantity-matcher unit fail-open or cost-calculator regex. Distinct auto-estimate condition fail-open.",
+      "description": "CostBreakdown.total sums labor/materials/equipment/subcontractor/overhead/profit with no non-negativity checks. Attacker sets large positive direct costs offset by negative profit/overhead so total collapses (e.g. $2M components → $50k). _calculate_severity then classifies MINOR. approve() has no status gate — DRAFT COs become APPROVED with arbitrary approver string. get_summary total_cost_impact / cost_impact_pct report the undercounted figure.",
+      "impact": "Owner exposure and schedule/cost risk from change orders are understated in analysis reports; forged APPROVED status legitimizes undercounted COs in downstream workflows.",
+      "attack_path": [
+        "create_change_order(...) → DRAFT.",
+        "update_cost(CostBreakdown(labor=1.5e6, materials=5e5, profit=-1.9e6, overhead=-5e4)) → total=50000, severity=MINOR.",
+        "approve(co_id, 'forged-approver') without submit_for_approval → APPROVED.",
+        "get_summary() reports total_cost_impact=50000 (0.5% of $10M contract) instead of ~$2M."
+      ],
+      "why_not_duplicate": "Sibling DRAFT-approve exists on curated change-order-manager, but this finding's primary chain is negative-component undercount into severity+summary (prompt: change-order undercount). Filed as one combined HIGH on the innovative analysis skill.",
       "key_snippets": [
-        "if prop_name in qto_item.properties:",
-        "if key in qto_item.properties:",
-        "if match: matching_rules.append(rule)",
-        "return max(matching_rules, key=lambda r: len(r.conditions))",
-        "item_cost = qto.quantity * rule.unit_cost"
+        "return self.labor + self.materials + self.equipment + self.subcontractor + self.overhead + self.profit",
+        "def approve(...): if co: ... co.status = ChangeOrderStatus.APPROVED  # no DRAFT/SUBMITTED check",
+        "total_cost = sum(co.cost_breakdown.total for co in self.change_orders.values())",
+        "PoC: $2M components → total=50000 MINOR + DRAFT→APPROVED"
       ],
       "poc": {
-        "qto_properties": {},
-        "selected_rule": "cheap-drywall",
-        "unit_cost": 45.0,
-        "qty": 1000,
-        "wrong_total": 45000.0,
-        "correct_masonry_total": 125000.0
+        "component_sum_positive_parts": 2000000,
+        "reported_total": 50000,
+        "severity": "minor",
+        "status_after_approve_from_draft": "approved",
+        "summary_cost_impact_pct": 0.5
       }
     },
     {
-      "id": "DDC-COSTRES-MISSING-RESOURCE-SKIP-2026-10-14",
+      "id": "DDC-INNOV-DIGITAL-TWIN-IFC-OVERWRITE-2026-10-14",
       "severity": "HIGH",
-      "title": "Resource-based estimator skips missing resource codes → $0 component undercount",
-      "location": "2_DDC_Book/3.1-Cost-Estimation/cost-estimation-resource/SKILL.md",
-      "evidence_lines": [147, 149, 152, 164, 175, 194],
-      "description": "calculate_work_item_cost loops norms and `continue`s when norm.resource_code not in self.resources, still returning status-like CostLineItem with reduced totals (no error). Incomplete price books or attacker-omitted resource rows drop labor/material/equipment lines to zero while the work item remains priced and rolled into calculate_estimate grand_total.",
-      "impact": "Estimates silently omit major BOM components (e.g. rebar/formwork) → underbid and downstream procurement shortfall.",
-      "attack_path": [
-        "Load work item with norms referencing M001+M999; leave M999 out of resources DB.",
-        "calculate_work_item_cost / calculate_estimate continues past missing code.",
-        "Line total and grand_total exclude missing resource cost with no failure signal."
+      "title": "digital-twin-sync import_from_ifc silently replaces elements → wipes COMPLETED status; unauth WS/MQTT write path",
+      "location": "5_DDC_Innovative/digital-twin-sync/SKILL.md",
+      "evidence_lines": [218, 238, 250, 274, 424, 437, 440, 466, 481],
+      "quoted_functions": [
+        "DigitalTwinCore.import_from_ifc",
+        "DigitalTwinCore.update_status",
+        "DigitalTwinCore.process_sensor_update",
+        "TwinSynchronizer._process_message",
+        "TwinSynchronizer.setup_sensor_integration"
       ],
-      "why_not_duplicate": "Not erp SQLi or CWICR cost-calculator wrong-item. New resource-method silent skip undercount.",
+      "description": "import_from_ifc always does `self.elements[element.element_id] = element` with a fresh DigitalTwinElement defaulting to PLANNED — no merge of status/properties/history. Re-importing an attacker-crafted IFC (or replaying import) for an in-progress/completed element wipes field progress to PLANNED. TwinSynchronizer WebSocket accepts unauthenticated `update` / `status_update` messages that call update_property / update_status; MQTT sensors/# has no auth and process_sensor_update overwrites bound properties.",
+      "impact": "As-built / progress twin state can be reset or forged (COMPLETED wiped or falsely set), corrupting progress billing, schedule integration, and live monitoring.",
+      "attack_path": [
+        "Field marks WALL-001 COMPLETED via update_status.",
+        "Attacker supplies IFC fragment with same element id to import_from_ifc → element replaced, status=PLANNED.",
+        "Or connect to TwinSynchronizer WS and send {type:'status_update', element_id:'WALL-001', status:'completed'} with no auth.",
+        "Or publish MQTT sensors/# spoofed values into bound structural properties."
+      ],
+      "why_not_duplicate": "Prior hunt discarded 'digital-twin WS' as near-miss without filing. This files the IFC silent overwrite (status wipe) as the primary SoR integrity chain, with WS/MQTT as the unauthenticated write amplifiers.",
       "key_snippets": [
-        "if norm.resource_code not in self.resources: continue",
-        "resource_qty = quantity * norm.consumption * norm.waste_factor",
-        "total = labor_cost + material_cost + equipment_cost + subcontractor_cost",
-        "total_cost=round(total, 2)"
+        "self.elements[element.element_id] = element  # import_from_ifc, no merge",
+        "status: ElementStatus = ElementStatus.PLANNED",
+        "elif msg_type == 'status_update': ... self.twin.update_status(...)",
+        "mqtt_client.subscribe(\"sensors/#\")",
+        "PoC: COMPLETED → re-import → PLANNED"
       ],
       "poc": {
-        "behavior": "missing resource_code skipped",
-        "line_still_returned": true,
-        "undercount": true
+        "before_reimport_status": "completed",
+        "after_reimport_status": "planned",
+        "ws_status_update_authenticated": false,
+        "mqtt_sensors_topic_auth": false
       }
     },
     {
-      "id": "DDC-BIMPIPE-LOD-IGNORED-PASS-2026-10-14",
+      "id": "DDC-INNOV-SITELOGISTICS-STORAGE-NONPERSIST-OVERBOOK-2026-10-14",
       "severity": "HIGH",
-      "title": "BIM validation pipeline pass/fail ignores LOD report entirely",
-      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md",
-      "evidence_lines": [511, 512, 521, 527, 529, 535, 359, 360],
-      "description": "BIMValidationPipeline.run computes lod_report = lod_validator.validate_model() but _evaluate_pass(bim_report, lod_report) only inspects bim_report['errors'] and bim_report['warnings']. LOD failures never flip passed=False. LODValidator also reports compliance=100 when an element type has zero instances (`if elements else 100`), vacuous success for missing categories.",
-      "impact": "Models failing LOD300/350 property/quantity requirements still get passed=True and can clear automated BEP delivery gates.",
-      "attack_path": [
-        "Submit IFC that triggers LODValidator issues (missing Material/Type/quantities) but few BIMValidator ERRORs.",
-        "run() stores lod_validation with total_issues>0.",
-        "_evaluate_pass returns True because lod_report is unused.",
-        "Downstream treats result['passed'] as delivery OK."
+      "title": "site-logistics allocate_storage never persists usage → repeated calls overbook storage capacity",
+      "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+      "evidence_lines": [127, 128, 392, 405, 421, 425, 431, 432],
+      "quoted_functions": [
+        "StorageOptimizer.allocate_storage",
+        "StorageOptimizer._calculate_allocation_score",
+        "StorageOptimizer.get_storage_utilization"
       ],
-      "why_not_duplicate": "Sibling of IDS applicability skip but distinct pipeline gate that discards LOD outcomes.",
+      "description": "allocate_storage copies zone.current_usage into a local zone_usage dict and increments only that local map. Successful allocations never write back to SiteZone.current_usage. A second call therefore starts from usage=0 again. Within one call, capacity is enforced (score -inf), but across calls a 100-ton yard accepts 90+90. get_storage_utilization also reads stale current_usage and reports available capacity that is already allocated.",
+      "impact": "Site logistics plans over-allocate physical storage → blocked unload bays, unsafe stockpile loading, and false JIT delivery readiness.",
+      "attack_path": [
+        "Configure STORAGE zone capacity=100, current_usage=0.",
+        "allocate_storage([{id:M1, quantity:90, ...}]) → YARD.",
+        "allocate_storage([{id:M2, quantity:90, ...}]) → YARD again (persisted usage still 0).",
+        "get_storage_utilization still shows used=0 / available=100."
+      ],
+      "why_not_duplicate": "Prior 'site-logistics soft storage' discard referred to restriction soft-penalty (-100). This is hard capacity non-persistence across allocate_storage calls — distinct overbook root cause. Not resource-pool max-vs-sum.",
       "key_snippets": [
-        "lod_report = lod_validator.validate_model()",
-        "'passed': self._evaluate_pass(bim_report, lod_report)",
-        "if self.config['fail_on_errors'] and bim_report['errors'] > 0: return False",
-        "return True",
-        "'compliance': (... ) if elements else 100"
+        "zone_usage = {zid: zone.current_usage for zid, zone in storage_zones.items()}",
+        "zone_usage[best_zone] += material['quantity']  # never assigned back to zone.current_usage",
+        "if remaining_capacity < material['quantity']: return -float('inf')  # only within one call",
+        "PoC: 90+90 into capacity 100 across two calls"
       ],
       "poc": {
-        "bim_errors": 0,
-        "bim_warnings": 2,
-        "lod_failed_elements": 500,
-        "pipeline_passed": true
-      }
-    },
-    {
-      "id": "DDC-INPUTVAL-TYPE-FAILOPEN-AUTHORIZE-2026-10-14",
-      "severity": "HIGH",
-      "title": "Input validators fail open on type mismatch / nonstandard inspection result → authorize processing",
-      "location": "4_DDC_Curated/Data-Validation/input-validation/SKILL.md",
-      "evidence_lines": [383, 387, 391, 425, 428, 463, 476, 486, 493],
-      "description": "FieldDataValidator only runs checks when type exactly equals 'daily_report'|'inspection'|'progress'. Wrong case ('Inspection'), typos, or omitted type leave is_valid=True with zero issues. Inspection result outside {pass,fail,conditional,not_applicable} is add_warning only — is_valid stays True. validate_pipeline_inputs skips unknown input_type keys. Documented callers gate with `if result.is_valid: process_estimate(...)` / return all_valid.",
-      "impact": "Forged or unchecked field/inspection payloads pass the validation gate and are authorized into downstream process_* / pipeline execution.",
-      "attack_path": [
-        "Submit field_data with type='Inspection' or type omitted, or inspection result='APPROVED_FORGED'.",
-        "FieldDataValidator returns is_valid=True (no ERROR).",
-        "Caller process_estimate / validate_pipeline_inputs allows processing."
-      ],
-      "why_not_duplicate": "Not permit ISSUED forge. New curated input-validation fail-open that explicitly authorizes process_* gates.",
-      "key_snippets": [
-        "if field_data.get('type') == 'inspection':",
-        "result.add_warning(\"result\", f\"Non-standard inspection result: {data['result']}\")",
-        "if result.is_valid: process_estimate(estimate)",
-        "if input_type in validators:",
-        "return all_valid"
-      ],
-      "poc": {
-        "type_Inspection_is_valid": true,
-        "missing_type_is_valid": true,
-        "nonstandard_result_is_valid": true
+        "yard_capacity": 100,
+        "alloc1_qty": 90,
+        "alloc2_qty": 90,
+        "both_allocated_to_yard": true,
+        "persisted_current_usage_after": 0
       }
     }
   ],
-  "near_misses": [
-    "email-construction Subject/To/Cc CRLF header injection — blocked by modern email policy HeaderParseError on as_string(); attachment path remains the live HIGH.",
-    "xlsx-construction task name stored as cell value starting with '=' — classic Excel formula injection but no auto-open/VBA/workbook_open chain in skill.",
-    "rag-construction — in-memory only; _generate_answer simulated; no filesystem path traversal or tool/exec RCE sink.",
-    "llm-data-automation — prompts produce code for humans; no automatic exec/eval of LLM output.",
-    "airflow-dag — bash_command/dag_id/filepath interpolated into generated DAG source; operator-controlled builder API, not an untrusted ingress.",
-    "daily-report-generator requests.get — fixed OpenWeatherMap host; location only as q= param (not open SSRF).",
-    "ifc-qto-extraction n8n webhook Execute Command — already reported unauth webhook RCE; subprocess uses list argv (already noted CAD class).",
-    "unit-price-database-manager / historical-cost-analyzer LOCATION_FACTORS.get(..., 1.0) — soft unknown-location factor; weaker than estimate/carbon fail-opens.",
-    "estimate-builder validate() advisory only — does not block calculate_total; weaker than auto-estimate/resource skip.",
-    "lifecycle Module D credits alone — design-ambiguous whole-life inclusion; filed under stronger silent assembly skip.",
-    "bim-validation IDSValidator ET.parse — Python xml.etree does not resolve external entities by default (XXE near-miss).",
-    "resource-leveler — reports remaining overallocations; success=False when unresolved (not fail-open)."
+  "discarded_near_misses": [
+    "delay-analysis — already HIGH in flagged-51 (EOT/damages forge); not re-filed.",
+    "look-ahead-scheduler — already HIGH (RESOLVED forge + vacuous predecessors).",
+    "resource-pool-optimizer — already HIGH (max-vs-sum overbook).",
+    "critical-path-analyzer — missing-predecessor EF=0 / zero-duration already reported; simulate_delay(negative) same false-recovery class as schedule-compression.",
+    "resource-allocation-optimizer — critical activities never shifted; leveling leaves double-book (prior discard; weaker than pool HIGH).",
+    "capacity-planning — PHASE_FACTORS key mismatch soft; staff capacity forge is admin-trust; active projects force probability=1.0.",
+    "equipment-telematics — CRITICAL coolant fault never changes OperatingStatus (prior FAULT soft discard).",
+    "material-tracking-iot — MQTT RFID/GPS spoof to IN_USE without auth (prior material MQTT soft discard); weaker than sensor structural fail-open.",
+    "risk-assessment-ml joblib.load pickle — operator-controlled path (prior discard).",
+    "open-construction-estimate apply_inflation(-1) / negative qty — calculator discard; underbid already reported.",
+    "bim-visual-programming-automation — Dynamo/Revit operator scripts; no remote entry.",
+    "progress-monitoring-cv / labor-productivity-analytics — analytics heuristics; no payment/safety SoR gate.",
+    "drone-site-survey — path writes under output_dir; operator-controlled; no cmd/SSRF sink.",
+    "digital-twin transform Callable stored in sensor_bindings — requires prior bind by operator; not remote-only RCE.",
+    "change-order joblib.load — same pickle operator-path class.",
+    "No new command injection / SSRF / path traversal complete chains in scoped set (CAD-style list argv absent; MQTT/WS are authZ/integrity class)."
   ]
 }
