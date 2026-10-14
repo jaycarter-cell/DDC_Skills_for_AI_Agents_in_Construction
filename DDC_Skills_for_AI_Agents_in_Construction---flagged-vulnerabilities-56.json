@@ -1,0 +1,298 @@
+{
+  "hunt": "cost-financial-contract-money-authz-rehunt",
+  "date": "2026-10-14",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-findings-memory-23b9",
+  "commit": "d600c8d",
+  "run": "https://cursor.com/agents/bc-02698a5b-6409-5cc9-82a4-2edd090cf32f",
+  "result": "1 CRITICAL + 5 HIGH + 1 MEDIUM",
+  "scope": [
+    "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+    "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+    "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+    "1_DDC_Toolkit/Cost-Management/cash-flow-forecaster/SKILL.md",
+    "1_DDC_Toolkit/Cost-Management/budget-variance-analyzer/SKILL.md",
+    "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+    "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md",
+    "4_DDC_Curated/Financial-Management/cashflow-forecaster/SKILL.md",
+    "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md",
+    "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md",
+    "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md",
+    "1_DDC_Toolkit/Document-Control/contract-clause-analyzer/SKILL.md"
+  ],
+  "skipped_already_reported_classes": [
+    "prior money-flow re-hunt marked NONE (no prior flagged IDs on these paths)",
+    "CWICR/rate-updater/overhead/change-order Innovative sibling already in other hunts"
+  ],
+  "verified_by_executing_extracted_python": true,
+  "findings": [
+    {
+      "id": "DDC-RETENTION-RELEASE-CONDITIONS-UNWIRED-2026-10-14",
+      "severity": "CRITICAL",
+      "title": "Retention release ignores check_release_conditions; lien_waivers is a forgeable bool; negative amount inflates held balance",
+      "location": "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md",
+      "evidence_lines": [
+        178,
+        181,
+        194,
+        211,
+        213,
+        250,
+        257,
+        270,
+        280
+      ],
+      "description": "Skill overview claims to ensure proper documentation for retention release and implements check_release_conditions() returning ready_for_release. release_retention() never calls it. lien_waivers and consent_of_surety are caller-supplied booleans recorded on the release object, not verified against any waiver store. amount is only capped when amount > balance_held; negative amount increases balance_held and decreases total_released.",
+      "impact": "Retention theft / unauthorized release: PoC held $10,000 with ready_for_release=False (7 missing conditions including final_lien_waiver) yet release_retention(FINAL_COMPLETION) paid $5,000 with lien_waivers_received=False. Negative amount=-5000 moved held 10000\u219215000 and total_released=-5000, corrupting retention ledgers used for closeout payouts.",
+      "attack_path": [
+        "Subcontractor or compromised agent calls release_retention(sub_id, FINAL_COMPLETION) while check_release_conditions still reports ready_for_release=False.",
+        "Optional: pass lien_waivers=True without any waiver document, or leave default False \u2014 release still commits.",
+        "Optional: pass amount=-N to inflate balance_held for later oversized release math.",
+        "sub.total_released / balance_held update and status PARTIAL_RELEASE/RELEASED drive payment of held retainage without punch list, surety consent, or lien waivers."
+      ],
+      "why_not_generic_caller_inputs": "Not merely caller passes amount. A dedicated gate (check_release_conditions / ready_for_release / lien_waivers_received fields) exists and is documented as the release control, but the money sink never consults it \u2014 unwired fail-open.",
+      "key_snippets": [
+        "def release_retention(..., lien_waivers: bool = False, consent_of_surety: bool = False)",
+        "if amount > sub.balance_held: amount = sub.balance_held  # no lower bound",
+        "sub.total_released += amount; sub.balance_held -= amount",
+        "def check_release_conditions(...): conditions = {punch_list_complete: False, final_lien_waiver: False, ...}",
+        "ready_for_release: len(missing) == 0  # never read by release_retention"
+      ],
+      "poc": {
+        "gross_billing": 100000,
+        "held": 10000,
+        "ready_for_release": false,
+        "missing_conditions": 7,
+        "released_without_waivers": 5000,
+        "lien_waivers_received": false,
+        "neg_amount_balance_after": 15000
+      }
+    },
+    {
+      "id": "DDC-CO-PROC-APPROVE-SKIP-REVIEW-2026-10-14",
+      "severity": "HIGH",
+      "title": "approve_change_order skips PENDING_APPROVAL gate that submit_for_review / submit_for_approval enforce",
+      "location": "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+      "evidence_lines": [
+        222,
+        228,
+        233,
+        239,
+        252,
+        268
+      ],
+      "description": "submit_for_review requires DRAFT; submit_for_approval requires PENDING_REVIEW. approve_change_order only checks that the CO exists, then sets APPROVED from any status including DRAFT \u2014 no role check, no prior review record required.",
+      "impact": "Fail-open approval workflow: attacker/agent approves an unreviewed draft CO; get_summary immediately adds total_cost into approved_changes and current_contract used for billing/SOV increases.",
+      "attack_path": [
+        "create_change_order + add_cost_item while status=DRAFT.",
+        "Call approve_change_order(co, 'Attacker', 'Owner') without submit_for_review / submit_for_approval.",
+        "Status becomes APPROVED; get_summary()['approved_changes'] includes the draft total."
+      ],
+      "why_not_generic_caller_inputs": "Sibling methods implement a status state machine; approve is the only transition that fails open. Distinct from no auth framework at all \u2014 the skill's own workflow gate is bypassable.",
+      "key_snippets": [
+        "if co.status != ChangeOrderStatus.DRAFT: raise ValueError(...)",
+        "if co.status != ChangeOrderStatus.PENDING_REVIEW: raise ValueError(...)",
+        "def approve_change_order(...):  # no status check",
+        "co.status = ChangeOrderStatus.APPROVED"
+      ],
+      "poc": {
+        "status_after_draft_approve": "APPROVED",
+        "approved_changes": 12100.0
+      }
+    },
+    {
+      "id": "DDC-CO-PROC-POST-APPROVE-TAMPER-2026-10-14",
+      "severity": "HIGH",
+      "title": "add_cost_item after APPROVED recalculates total_cost; get_summary treats live total as approved contract delta",
+      "location": "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+      "evidence_lines": [
+        178,
+        191,
+        203,
+        205,
+        210,
+        310,
+        311,
+        316
+      ],
+      "description": "add_cost_item has no status guard. After approval it appends CostItems, calls _recalculate_totals (including per-line markup_percent and global overhead/profit), and mutates co.total_cost. get_summary sums co.total_cost for APPROVED COs into approved_changes and current_contract \u2014 there is no frozen approved_amount.",
+      "impact": "Post-approval amount tampering / contract inflation. PoC: approved $12,100 CO \u2192 add Hidden 100\u00d7$50k @ 50% markup \u2192 total_cost $9,087,100; current_contract $10,087,100.",
+      "attack_path": [
+        "Approve a small legitimate CO.",
+        "Call add_cost_item on the same co_number with large quantity/unit_cost/markup_percent.",
+        "_recalculate_totals overwrites total_cost; get_summary / export reports use the inflated figure as approved changes."
+      ],
+      "why_not_generic_caller_inputs": "Not caller picks approved_amount. Money impact comes from mutating an already-APPROVED object that summary treats as settled contract value, with no approved snapshot.",
+      "key_snippets": [
+        "co.cost_items.append(item); self._recalculate_totals(co)",
+        "co.total_cost = co.direct_cost + co.overhead_cost + co.profit_cost",
+        "if co.status == ChangeOrderStatus.APPROVED: total_approved += co.total_cost",
+        "current_contract = self.original_contract + total_approved"
+      ],
+      "poc": {
+        "approved_total_before": 12100.0,
+        "approved_total_after_tamper": 9087100.0,
+        "current_contract": 10087100.0
+      }
+    },
+    {
+      "id": "DDC-PAYAPP-PROC-SOV-APPROVAL-G702-2026-10-14",
+      "severity": "HIGH",
+      "title": "Pay app processor: uncapped SOV progress, approve from DRAFT, uncapped approved_amount, post-approve G702 drift",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "evidence_lines": [
+        238,
+        251,
+        263,
+        276,
+        279,
+        324,
+        335,
+        344,
+        348,
+        365,
+        394
+      ],
+      "description": "Skill claims to Validate against schedule of values but update_by_percentage trusts any percent_complete (PoC 250%) and update_line_item sets current_completed + materials_stored independently (double-bill same SOV). Only negative current_completed is clamped. approve_pay_app ignores SUBMITTED status and accepts approved_amount with no cap vs net_amount_due. After APPROVED, update_* still mutates totals; generate_g702 emits current_payment_due from live net_amount_due, not approved_amount.",
+      "impact": "Overbilling + unauthorized payment certificate. PoC: $300k contract \u2192 total_completed $650k, net $585k; approve_pay_app(..., 9_999_999) \u2192 PAID. Separate PoC: approve at 50% ($45k) then update_by_percentage(100) \u2192 G702 current_payment_due $90k while approved_amount stays $45k.",
+      "attack_path": [
+        "create_pay_app (DRAFT); update_by_percentage(line, 250) and/or set materials_stored equal to scheduled_value alongside full current_completed.",
+        "approve_pay_app(app, approved_amount=huge) without submit_pay_app.",
+        "record_payment / generate_g702 use inflated net or forged approved_amount.",
+        "Or: approve honestly, then update_by_percentage upward so G702 current_payment_due doubles past the approved figure."
+      ],
+      "why_not_generic_caller_inputs": "Combines (1) documented SOV validation that is absent, (2) status fail-open vs submit_pay_app, and (3) signed G702 math reading mutable post-approval state instead of frozen approved_amount.",
+      "key_snippets": [
+        "total_earned = item.scheduled_value * (percent_complete / 100)  # no <=100 clamp",
+        "if item.current_completed < 0: item.current_completed = 0  # upper unbound",
+        "pay_app.approved_amount = approved_amount if approved_amount else pay_app.net_amount_due",
+        "current_payment_due=pay_app.net_amount_due  # generate_g702 after post-approve mutate"
+      ],
+      "poc": {
+        "contract_sum": 300000,
+        "total_completed_overbill": 650000,
+        "net_amount_due": 585000,
+        "forged_approved_amount": 9999999,
+        "g702_due_after_post_approve_update": 90000,
+        "approved_amount_frozen": 45000
+      }
+    },
+    {
+      "id": "DDC-SUBPAY-WAIVER-SKIP-OVERCONTRACT-2026-10-14",
+      "severity": "HIGH",
+      "title": "record_payment marks PAID with no lien-waiver or APPROVED check; invoices uncapped vs contract",
+      "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+      "evidence_lines": [
+        125,
+        133,
+        149,
+        158,
+        165,
+        170,
+        203,
+        207
+      ],
+      "description": "Skill advertises lien-waiver tracking and compliance. record_invoice never checks cumulative gross vs contract_amount. approve_payment does not require a waiver. record_payment sets PAID from INVOICED without requiring APPROVED or lien_waiver. get_missing_waivers only reports after funds are already PAID.",
+      "impact": "Unauthorized payment release + lien exposure + overbilling. PoC: $50k contract, two $40k invoices \u2192 $72k net paid, balance_remaining -$30k, two missing waivers only visible post-payment.",
+      "attack_path": [
+        "record_invoice amounts that sum above contract_amount.",
+        "record_payment(payment_id, sub_id, check) without approve_payment and without attach_lien_waiver.",
+        "Payment status=PAID; get_missing_waivers lists the gap only after cash is marked paid."
+      ],
+      "why_not_generic_caller_inputs": "Waiver attachment and approval are first-class APIs the skill exposes as the compliance controls; the payment sink simply never consults them (post-facto report only).",
+      "key_snippets": [
+        "def record_payment(...): payment.status = PaymentStatus.PAID  # no waiver/status gate",
+        "def approve_payment(...): payment.status = PaymentStatus.APPROVED  # unused by record_payment",
+        "if payment.status == PaymentStatus.PAID and not payment.lien_waiver: missing.append(...)",
+        "balance_remaining = contract_amount - total_paid - total_retention"
+      ],
+      "poc": {
+        "contract_amount": 50000,
+        "total_paid": 72000,
+        "missing_waivers": 2,
+        "balance_remaining": -30000
+      }
+    },
+    {
+      "id": "DDC-PAYAPP-GEN-UNCAPPED-PROGRESS-2026-10-14",
+      "severity": "HIGH",
+      "title": "Payment application generator accepts progress that exceeds scheduled_value with no SOV clamp",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "evidence_lines": [
+        178,
+        199,
+        202,
+        204,
+        236,
+        246,
+        260
+      ],
+      "description": "create_application copies attacker/agent-supplied progress work/materials onto SOV lines with no check that total_completed_current <= scheduled_value. calculate_payment_due / generate_g702 then compute current_payment_due from total_earned_less_retainage.",
+      "impact": "Overbilling certificate. PoC: $100k SOV line billed work=250000 + materials=50000 \u2192 percent_complete 300%, current_payment_due $270,000.",
+      "attack_path": [
+        "setup_sov with legitimate scheduled values.",
+        "create_application(..., progress={line: {work: > scheduled_value, materials: ...}}).",
+        "calculate_payment_due / generate_g702 emit inflated current_payment_due for owner payment."
+      ],
+      "why_not_generic_caller_inputs": "This skill's purpose is AIA G702/G703 schedule-of-values billing; missing the SOV ceiling is a domain invariant break that directly forges payment-due.",
+      "key_snippets": [
+        "updated_sov.work_completed_current = prog['work']",
+        "updated_sov.materials_stored_current = prog['materials']",
+        "current_payment = application.total_earned_less_retainage - previous_payments"
+      ],
+      "poc": {
+        "scheduled_value": 100000,
+        "billed_work_plus_materials": 300000,
+        "percent_complete": 300.0,
+        "current_payment_due": 270000.0
+      }
+    },
+    {
+      "id": "DDC-LIEN-CAN-RELEASE-RECEIVED-AS-VERIFIED-2026-10-14",
+      "severity": "MEDIUM",
+      "title": "can_release_payment treats RECEIVED waivers as verified and returns can_release=True",
+      "location": "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md",
+      "evidence_lines": [
+        177,
+        184,
+        194,
+        252,
+        340,
+        360,
+        364
+      ],
+      "description": "verify_waiver exists as a separate step, but can_release_payment allows WaiverStatus.RECEIVED or VERIFIED and returns reason 'All waivers verified'. receive_waiver only sets RECEIVED. Agents are expected to gate payouts on can_release_payment.",
+      "impact": "Lien-waiver skip / forgery of verification: uploading any file_path via receive_waiver unlocks can_release=True for amount_approved without verify_waiver. PoC: after receive_waiver only \u2192 can_release True, reason All waivers verified, amount $45,000.",
+      "attack_path": [
+        "create_payment_application for target sub.",
+        "receive_waiver(LW-..., '/attacker/empty.pdf') \u2014 status=RECEIVED, no content/amount check.",
+        "can_release_payment returns can_release=True with misleading verified reason \u2192 payment release by integrating agent."
+      ],
+      "why_not_generic_caller_inputs": "Verification is a distinct state machine step that the release gate collapses; the returned reason actively mislabels RECEIVED as verified.",
+      "key_snippets": [
+        "waiver.status = WaiverStatus.RECEIVED",
+        "def verify_waiver(...): waiver.status = WaiverStatus.VERIFIED",
+        "if w.status not in [WaiverStatus.RECEIVED, WaiverStatus.VERIFIED]: return can_release False",
+        "return {can_release: True, reason: 'All waivers verified', amount: pay_app.amount_approved}"
+      ],
+      "poc": {
+        "status_after_receive_only": "RECEIVED",
+        "can_release": true,
+        "reason": "All waivers verified",
+        "amount": 45000.0
+      }
+    }
+  ],
+  "discarded_near_misses": [
+    "change-order-manager approve from DRAFT / caller approved_amount \u2014 approved_amount is explicit parameter; post-approve add_line_item changes proposed_amount only, get_summary uses approved_amount (weaker than processor live total_cost).",
+    "change-order-manager set_markup_rates unbounded \u2014 config/caller rate class; no post-approve money sink distinct from approved_amount.",
+    "cash-flow-forecaster / cashflow-forecaster \u2014 projection/S-curve only; retention release at end is schedule math, not a payment authorize sink.",
+    "budget-variance-analyzer (toolkit + curated) adjust_budget / use_contingency / revise_budget \u2014 reporting/forecast; no payment release or retention payout path.",
+    "contract-clause-analyzer \u2014 keyword NLP risk labels only; no authZ or money mutation sink.",
+    "payment-application-generator retainage=0.0 falsy \u2192 DEFAULT 0.10 \u2014 opposite of retention theft (cannot zero via constructor).",
+    "payment-application-processor set_retainage_rates(0) \u2014 admin rate setter; subsumed by stronger SOV/G702 finding.",
+    "lien-waiver-tracker missing release_payment mutator / PaymentStatus.RELEASED never set \u2014 incomplete API, not an alternate bypass sink beyond can_release advisory.",
+    "calculate_payment_due(previous_payments=0) override \u2014 pure caller-controlled input class.",
+    "retention release_schedule.get(milestone, 0.5) unknown milestone \u2192 50% \u2014 soft default; primary issue is unwired conditions gate."
+  ]
+}
