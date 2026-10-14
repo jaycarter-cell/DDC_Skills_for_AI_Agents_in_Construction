@@ -3,7 +3,7 @@
   "date": "2026-10-14",
   "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
   "branch": "cursor/vulnerability-findings-memory-23b9",
-  "commit": "pending",
+  "commit": "f8c6ec752cf56b234846562a53568f2237a5f2b1",
   "run": "https://cursor.com/agents/bc-9164b686-b31d-57b5-abce-a565e70c986e",
   "result": "6 HIGH",
   "scope": [
@@ -325,5 +325,5 @@
     "change-order joblib.load \u2014 same pickle operator-path class.",
     "No new command injection / SSRF / path traversal complete chains in scoped set (CAD-style list argv absent; MQTT/WS are authZ/integrity class)."
   ],
-  "artifact_commit": "0c64b8e"
+  "artifact_commit": "f8c6ec7"
 }
