@@ -1,0 +1,155 @@
+{
+  "hunt": "innovative-leftover-skills-logic-rehunt",
+  "date": "2026-10-14",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-findings-memory-23b9",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "run": "https://cursor.com/agents/bc-93a2b7d1-8877-5de8-af89-d81e85f9a778",
+  "result": "4 HIGH",
+  "scope": [
+    "5_DDC_Innovative/prefab-optimization/SKILL.md",
+    "5_DDC_Innovative/risk-assessment-ml/SKILL.md",
+    "5_DDC_Innovative/progress-monitoring-cv/SKILL.md",
+    "5_DDC_Innovative/defect-detection-ai/SKILL.md",
+    "5_DDC_Innovative/bim-visual-programming-automation/SKILL.md",
+    "5_DDC_Innovative/open-construction-estimate/SKILL.md",
+    "5_DDC_Innovative/clash-detection-analysis/SKILL.md",
+    "5_DDC_Innovative/labor-productivity-analytics/SKILL.md",
+    "5_DDC_Innovative/ifc-data-extraction/SKILL.md",
+    "5_DDC_Innovative/document-classification-nlp/SKILL.md",
+    "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
+    "5_DDC_Innovative/energy-simulation/SKILL.md"
+  ],
+  "skipped_already_reported": [
+    "prefab overlength within_standard=True + empty required_modules deps",
+    "safety any() fall-protection + unused excavation/scaffold/electrical rules",
+    "energy floor U-values never checked in check_envelope",
+    "weather/resource-pool/site-logistics/sensor/env/capacity/enterprise-risk/drone/digital-twin/telematics/portfolio/permit/material-IoT/change-order/n8n BIM RCE-SQLi/as-built/contractor-underbid"
+  ],
+  "findings": [
+    {
+      "id": "DDC-INNOV-SAFETY-HOTWORK-CS-FAILOPEN-2026-10-14",
+      "severity": "HIGH",
+      "title": "check_work_activity hot-work/confined-space gates fail open on case/type variants",
+      "location": "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
+      "evidence_lines": [266, 292],
+      "description": "Hot-work OSHA-1926.352 runs only when activity['type'] is exactly one of lowercase ['welding','cutting','brazing']. Capitalized or synonym forms (Welding, HOT_WORK, torch_cutting) skip the permit/fire-watch/extinguisher checks entirely. Confined-space OSHA-1926.1200 (CRITICAL) runs only when activity.get('confined_space', False) is truthy — activity type 'confined_space' / 'permit_required_confined_space' with the boolean omitted produces zero CS checks. Remaining PPE path only verifies helmet.",
+      "impact": "Hot work without permit/fire watch and confined-space entry without permit/attendant/atm test are reported as compliance-clean (helmet-only), enabling fire and asphyxiation incidents.",
+      "attack_path": [
+        "Submit activity {type:'Welding', workers:[{ppe:['helmet']}], permits:[], equipment:[], fire_watch:False}.",
+        "check_work_activity returns only OSHA-1926.100 COMPLIANT — no OSHA-1926.352 row.",
+        "Alternatively submit {type:'confined_space', workers:[{ppe:['helmet']}], permits:[]} without confined_space=True.",
+        "Dashboard/consumers see no NON_COMPLIANT hot-work/CS findings → work proceeds without controls."
+      ],
+      "why_not_duplicate": "Distinct from already-reported fall-protection any(harness|guardrail) and unused excavation/scaffold/electrical rule objects. This is an active gate that fails to fire on realistic type casing / missing boolean, not a dead rule definition.",
+      "key_snippets": [
+        "if activity_type in ['welding', 'cutting', 'brazing']:",
+        "if activity.get('confined_space', False):",
+        "CONTROL type='welding' → NON_COMPLIANT (missing permit/fire watch/extinguisher)",
+        "ATTACK type='Welding' → zero OSHA-1926.352 checks",
+        "ATTACK type='confined_space' without flag → zero OSHA-1926.1200 checks"
+      ],
+      "poc": {
+        "control_welding_findings": ["Missing hot work permit", "No fire watch assigned", "No fire extinguisher on site"],
+        "attack_Welding_hot_checks": 0,
+        "attack_confined_space_type_cs_checks": 0
+      }
+    },
+    {
+      "id": "DDC-INNOV-PREFAB-BLOCKS-IGNORED-2026-10-14",
+      "severity": "HIGH",
+      "title": "AssemblySequencer ignores blocks_modules → dependent modules co-scheduled unsafely",
+      "location": "5_DDC_Innovative/prefab-optimization/SKILL.md",
+      "evidence_lines": [158, 415, 420, 421, 425],
+      "description": "ModuleDesign documents blocks_modules as modules that 'Cannot install until this is done', but _build_dependency_graph only reads required_modules. calculate_sequence / generate_installation_plan therefore treat blocker-only edges as absent: foundation F1 with blocks_modules=['U1'] and upper U1 with empty required_modules are both degree-0 and land in the same installation level (order undefined within the batch).",
+      "impact": "Upper/structural modules can be crane-installed before supporting modules, risking collapse, dropped loads, and invalid MEP tie-ins during prefab assembly.",
+      "attack_path": [
+        "Define ModuleDesign F1 with blocks_modules=['U1'] and U1 with required_modules=[].",
+        "AssemblySequencer([F1,U1]).calculate_sequence() → [['F1','U1']] (same level).",
+        "generate_installation_plan batches both for the same day/crane window.",
+        "Field follows plan and lifts U1 without F1 complete."
+      ],
+      "why_not_duplicate": "Already-reported empty required_modules is the missing-edge case when neither field is set. This is the opposite: the documented blocks_modules edge is present but never wired into the graph — a distinct ignored-field fail-open.",
+      "key_snippets": [
+        "blocks_modules: List[str] = field(default_factory=list)  # Cannot install until this is done",
+        "for dep_id in module.required_modules:  # blocks_modules never read",
+        "graph[module_id].add(dep_id)",
+        "PoC sequence: [['F1', 'U1']]"
+      ],
+      "poc": {
+        "sequence": [["F1", "U1"]],
+        "u1_coscheduled_with_f1": true
+      }
+    },
+    {
+      "id": "DDC-INNOV-ENERGY-VACUOUS-COMPLIANT-2026-10-14",
+      "severity": "HIGH",
+      "title": "check_envelope defaults compliant=True and passes on empty wall/window/roof lists",
+      "location": "5_DDC_Innovative/energy-simulation/SKILL.md",
+      "evidence_lines": [471, 476, 487, 511, 522],
+      "description": "ComplianceChecker.check_envelope initializes results['compliant']=True and only flips False when an iterated assembly exceeds limits. BuildingGeometry with walls=[], windows=[], roofs=[] (and arbitrarily bad floors) returns compliant=True with issues=[]. Combined with the already-known floor skip, omitting non-compliant assemblies from the submitted model yields a clean code stamp.",
+      "impact": "Energy-code compliance can be forged by omitting assemblies (or submitting an empty envelope), green-lighting permits/bids for non-code buildings and understated HVAC loads.",
+      "attack_path": [
+        "Build BuildingGeometry with empty walls/windows/roofs and floors using U=2.0 (>> floor_u_max).",
+        "ComplianceChecker('ASHRAE_90.1_2019_4A').check_envelope(building).",
+        "Observe compliant=True, issues=[].",
+        "Export/attach result as ASHRAE/IECC compliance evidence."
+      ],
+      "why_not_duplicate": "Already-reported issue is that floor_u_max is never compared when floors are present. This finding is vacuous success on empty wall/window/roof collections (fail-open default), independent of the floor loop gap.",
+      "key_snippets": [
+        "'compliant': True,",
+        "for wall in building.walls:",
+        "for window in building.windows:",
+        "for roof in building.roofs:",
+        "return results  # floors never visited; empty lists never fail"
+      ],
+      "poc": {
+        "empty_envelope_bad_floor_u": 2.0,
+        "compliant": true,
+        "issues": []
+      }
+    },
+    {
+      "id": "DDC-INNOV-CLASH-GEOM-SILENT-SKIP-2026-10-14",
+      "severity": "HIGH",
+      "title": "ClashDetector silently skips elements whose geometry extraction throws",
+      "location": "5_DDC_Innovative/clash-detection-analysis/SKILL.md",
+      "evidence_lines": [107, 126, 127, 144, 152, 195, 203],
+      "description": "_get_geometry wraps ifcopenshell.geom.create_shape in a bare except and returns None. detect_hard_clashes / detect_soft_clashes then `continue` when geom is None, never recording a failure or suspected clash. Elements with missing/broken representations, tessellation errors, or attacker-crafted IFC bodies that raise are treated as clash-free. get_summary can report total=0 while physical overlaps exist.",
+      "impact": "Hard clashes between structure/MEP can vanish from coordination reports → field collisions, rework, and struck-by/cut-in risks during install.",
+      "attack_path": [
+        "Supply an IFC (or corrupt representations) where create_shape raises for one or both clashing elements.",
+        "Run detect_hard_clashes(['IfcWall'], ['IfcPipeSegment']) / run_all_clash_tests.",
+        "_get_geometry returns None; both detect loops continue without appending Clash rows.",
+        "get_summary()/export_clash_report show total=0 → coordination sign-off."
+      ],
+      "why_not_duplicate": "Not the prior clash to_html XSS near-miss. This is a fail-open safety/coordination gate: geometry failure is indistinguishable from 'no clash', with no error channel in the report.",
+      "key_snippets": [
+        "except:\n            return None",
+        "if geom1 is None:\n                continue",
+        "if geom2 is None:\n                continue",
+        "self.clashes.extend(clashes)  # may stay empty despite overlaps"
+      ],
+      "poc": {
+        "geometry_exception_returns": null,
+        "detect_loop_behavior": "continue without Clash row",
+        "summary_total_when_all_fail": 0
+      }
+    }
+  ],
+  "discarded_near_misses": [
+    "prefab overweight within_standard=True — same root as already-reported overlength (within_standard only cleared for W/H).",
+    "prefab empty required_skills ⊆ any bay — scheduling quality soft; weaker than blocks_modules ignore.",
+    "safety check_ppe_compliance empty required_ppe=[] → COMPLIANT — caller sets both policy and observation; same class as discarded Pass-forge near-misses.",
+    "open-construction-estimate negative quantity / apply_inflation(-1) wipe — calculator money invert; price DB mutation previously discarded; contractor-underbid already reported.",
+    "risk-assessment-ml joblib.load pickle RCE — operator-controlled model path (prior pickle discard class); empty untrained predict=[] soft.",
+    "defect-detection-ai severity-from-confidence — model-quality heuristic, not SoR gate.",
+    "progress-monitoring-cv — phase heuristic caps ~ENCLOSURE; PPE observations never hard-fail.",
+    "document-classification-nlp misroute / low-confidence Other — soft routing, prior discard.",
+    "labor-productivity-analytics set_standard/productivity_factor forge — analytics only, no payment SoR.",
+    "ifc-data-extraction to_database(connection_string) if_exists=replace / path writes — operator-controlled sinks.",
+    "bim-visual-programming-automation Excel→Revit mass param set — intentional Dynamo operator script, no remote entry.",
+    "clash soft distance>0 / vertex-distance underclassifies deep penetration — algorithm limit; silent None skip is the filed chain.",
+    "energy lighting check OK; floor U skip already reported."
+  ]
+}

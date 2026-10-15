@@ -1,0 +1,290 @@
+{
+  "hunt": "cwicr-leftover-skills-logic-injection-rehunt",
+  "date": "2026-10-14",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-findings-memory-23b9",
+  "commit": "a48f9f2081985ea70d889fb078054f6582816984",
+  "run": "https://cursor.com/agents/bc-d3a25f00-a9c5-5ca1-bf39-aa503cbfae63",
+  "result": "5 HIGH + 3 MEDIUM",
+  "scope": [
+    "1_DDC_Toolkit/CWICR-Database/cwicr-crew-optimizer/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-labor-scheduler/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-equipment-planner/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-productivity-tracker/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-assembly-builder/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-takeoff-helper/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-data-loader/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-data-validator/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-comparison-tool/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-historical-cost/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-waste-calculator/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-report-generator/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/semantic-search-cwicr/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-multilingual/SKILL.md",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-unit-converter/SKILL.md"
+  ],
+  "skipped_already_reported_classes": [
+    "unbounded location/risk factors",
+    "rate-updater",
+    "overhead-markup",
+    "material-substitution",
+    "value-engineering",
+    "subcontractor",
+    "change-order",
+    "bid-analyzer"
+  ],
+  "findings": [
+    {
+      "id": "DDC-CWICR-QTY-UNIT-FAILOPEN-2026-10-14",
+      "severity": "HIGH",
+      "title": "Quantity matcher fails open to 1.0 on unknown unit pairs → 10×+ cost-linked QTO error",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md",
+      "evidence_lines": [201, 209, 263, 277, 400, 413],
+      "description": "_get_unit_conversion returns UNIT_CONVERSIONS.get(..., 1.0) when the (from,to) pair is absent. The table only covers sf/m2, cy/m3, lf/m, lb/kg (and reverses). Common BIM aliases (sqft, ft, yd3, mm2, in) and mixed casings after normalize still miss → factor stays 1.0. match_element stores that factor; generate_cost_linked_qto multiplies bim_quantity * factor * unit_cost with Confidence still HIGH/MEDIUM from text similarity.",
+      "impact": "BIM takeoffs in imperial/alias units are priced as if already in CWICR metric units. PoC: 10,000 sqft @ $85/m2 → $850,000 instead of ~$78,968 (10.76× overstatement), poisoning bids, budgets, and procurement orders.",
+      "attack_path": [
+        "Export Revit/IFC QTO with Unit='sqft' (or ft/yd3) while CWICR work items use m2/m3.",
+        "CWICRQuantityMatcher.match_quantities / match_element calls _get_unit_conversion('sqft','m2') → 1.0.",
+        "generate_cost_linked_qto computes Quantity=bim_qty*1.0 and Total Cost=qty*unit_cost.",
+        "Estimator/agent exports Excel or feeds cost calculator → inflated (or wrong-direction) bid."
+      ],
+      "why_not_duplicate": "Not location-factor/rate-updater overwrite. Distinct fail-open unit gate on BIM→CWICR matching that prior CWICR/money hunts did not file. Not open-estimate calculator discard — this is systematic conversion silence into cost-linked QTO.",
+      "key_snippets": [
+        "return UNIT_CONVERSIONS.get((from_norm, to_norm), 1.0)",
+        "conversion = self._get_unit_conversion(unit, work_item_unit)",
+        "unit_conversion_factor=conversion",
+        "converted_qty = match.bim_quantity * match.unit_conversion_factor",
+        "'Total Cost': round(converted_qty * unit_cost, 2)"
+      ],
+      "poc": {
+        "bim_qty": 10000,
+        "bim_unit": "sqft",
+        "work_item_unit": "m2",
+        "factor": 1.0,
+        "unit_cost": 85.0,
+        "wrong_total": 850000.0,
+        "correct_total": 78967.55,
+        "overstatement_ratio": 10.76
+      }
+    },
+    {
+      "id": "DDC-CWICR-COST-REGEX-WRONG-ITEM-2026-10-14",
+      "severity": "HIGH",
+      "title": "Cost calculator falls back to regex str.contains and prices the first match",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md",
+      "evidence_lines": [152, 155, 157, 167, 185, 197],
+      "description": "When work_item_code is not an exact index hit, calculate_item_cost uses DataFrame.str.contains(work_item_code, case=False) with pandas default regex=True, then takes matches.iloc[0]. Attacker- or BIM-supplied substrings/metacharacters (GOLD, CONC, .*, A.*) select an unintended row. Status remains CALCULATED (not MISSING_DATA). Same path multiplies labor/material/equipment by unbounded quantity (including negative → credit invert).",
+      "impact": "Wrong CWICR row drives labor/material/equipment/overhead/profit. PoC: code 'GOLD' (not in index) matches GOLD-999 → ~$6.96M for qty 100; negative qty on CONC-001 yields -$21,505 credit line that reduces estimate totals.",
+      "attack_path": [
+        "Submit estimate line with work_item_code that is not exact (partial trade prefix, typo, or regex like 'GOLD' / '.*').",
+        "Exact index lookup fails; str.contains(regex) returns one or more rows; iloc[0] wins.",
+        "calculate_item_cost / calculate_estimate marks status=CALCULATED with that row's rates × quantity.",
+        "Summary/report uses forged line totals for bid or change pricing."
+      ],
+      "why_not_duplicate": "Not rate-updater (no DB mutate) or overhead-markup (rates come from wrong item selection via regex injection/partial match). Not bid-analyzer. New leftover cost-calculator surface.",
+      "key_snippets": [
+        "matches = self.data[self.data['work_item_code'].str.contains(work_item_code, case=False, na=False)]",
+        "item = matches.iloc[0]",
+        "labor_cost = labor_unit * quantity",
+        "total_cost = direct_cost + overhead_cost + profit_cost",
+        "status=CostStatus.CALCULATED"
+      ],
+      "poc": {
+        "attacker_code": "GOLD",
+        "matched_row": "GOLD-999",
+        "qty": 100,
+        "total": 6957500.0,
+        "neg_qty_conc_total": -21505.0
+      }
+    },
+    {
+      "id": "DDC-CWICR-SCHED-EVM-PROGRESS-FORGE-2026-10-14",
+      "severity": "HIGH",
+      "title": "Earned-value progress percent uncapped → forged EV/SPI/CPI/EAC",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md",
+      "evidence_lines": [257, 274, 275, 287, 288, 292, 293],
+      "description": "calculate_earned_value trusts progress[activity_id] with no clamp to [0,100]. EV = sum(budgeted_cost * progress/100) can exceed BAC. SPI=EV/PV and CPI=EV/AC then inflate; EAC=BAC/CPI collapses. Callers (agents/field apps) supply the progress dict with no authZ or evidence gate.",
+      "impact": "Over-reported percent complete forges schedule/cost health: PoC BAC=$1M + progress 250% → EV=$2.5M, SPI=6.25, CPI=5.56, EAC=$180k despite AC=$450k — hides overruns and unlocks optimistic cash/claims decisions.",
+      "attack_path": [
+        "Build activities with real budgeted_cost via create_schedule_activity.",
+        "Call calculate_earned_value(..., progress={'A1': 250}, actual_costs={'A1': 450000}, data_date=...).",
+        "Observe EV=2.5×BAC, SPI/CPI ≫ 1, EAC ≪ BAC.",
+        "Export/report metrics used for owner reporting or payment/claims support."
+      ],
+      "why_not_duplicate": "Distinct from schedule-compression trusting is_critical / false achieved_reduction. This is uncapped percent-complete mass-assignment on CWICR schedule-integrator EVM, not CPM compression.",
+      "key_snippets": [
+        "ev = sum(a.budgeted_cost * progress.get(a.activity_id, 0) / 100 for a in activities)",
+        "spi = ev / pv if pv > 0 else 0",
+        "cpi = ev / ac if ac > 0 else 0",
+        "eac = bac / cpi"
+      ],
+      "poc": {
+        "bac": 1000000,
+        "progress_pct": 250,
+        "ev": 2500000.0,
+        "pv": 400000,
+        "ac": 450000,
+        "spi": 6.25,
+        "cpi": 5.56,
+        "eac": 180000.0
+      }
+    },
+    {
+      "id": "DDC-CWICR-SCHED-MISSING-CODE-ZERO-COST-2026-10-14",
+      "severity": "HIGH",
+      "title": "get_work_item_cost returns 0 for unknown codes → silent cost-loaded underbid",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md",
+      "evidence_lines": [110, 112, 113, 134, 137, 149],
+      "description": "get_work_item_cost returns 0 when the code is missing from the CWICR index (no error, no MISSING_DATA flag). create_schedule_activity still appends the code to work_items and sets budgeted_cost from the zeroed sum. generate_cash_flow / calculate_earned_value then treat the activity as low/zero budget.",
+      "impact": "Typos, attacker-chosen fake codes, or stripped rates silently drop entire scopes from cost-loaded schedules and cash-flow projections → understated bids and BAC.",
+      "attack_path": [
+        "Include work_items with codes absent from CWICR (or empty dataset index).",
+        "create_schedule_activity sums get_work_item_cost → 0 while still listing the codes.",
+        "generate_cash_flow / EVM use budgeted_cost=0 for those activities.",
+        "Project cash/BAC understates true scope; bid or funding decision proceeds."
+      ],
+      "why_not_duplicate": "Not cost-calculator MISSING_DATA path (that skill flags status). Not rate-updater. Fail-open zero-price on schedule cost integration specifically.",
+      "key_snippets": [
+        "if self._code_index is None or code not in self._code_index.index:\n            return 0",
+        "total_cost += self.get_work_item_cost(code, qty)",
+        "codes.append(code)",
+        "budgeted_cost=round(total_cost, 2)"
+      ],
+      "poc": {
+        "unknown_code": "FAKE-999",
+        "quantity": 500,
+        "get_work_item_cost": 0,
+        "budgeted_cost_contribution": 0
+      }
+    },
+    {
+      "id": "DDC-CWICR-LABOR-SILENT-CAP-UNDERSTAFF-2026-10-14",
+      "severity": "HIGH",
+      "title": "Labor scheduler caps workers_needed but keeps full total_hours (silent understaff)",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-labor-scheduler/SKILL.md",
+      "evidence_lines": [188, 230, 231, 237, 239, 250],
+      "description": "generate_schedule computes workers=ceil(hours/hours_per_day) then workers=min(workers, max_workers_per_trade) (default 50) without reducing total_hours, raising an error, or setting a shortage flag. peak_workers and daily_loading reflect the capped headcount while assignment.total_hours and schedule.total_labor_hours still encode the uncapped demand.",
+      "impact": "Plans look staffed at ≤50/trade while hundreds of hours/day remain unallocated → crew shortfall, overtime surprise, and safety understaffing on high-quantity packages.",
+      "attack_path": [
+        "Submit high-quantity / short-duration items so daily trade hours require >50 workers (or lower max_workers_per_trade).",
+        "generate_schedule caps workers_needed at max_workers_per_trade.",
+        "CrewAssignment still stores total_hours=uncapped hours; peak_workers uses capped day_total.",
+        "Export/loading curve used for hiring shows peak=50 while work implies 100 → understaffed execution."
+      ],
+      "why_not_duplicate": "Opposite of already-reported resource-pool max-vs-sum overbook. This is fail-open capacity understaff with no shortage signal — not double-booking.",
+      "key_snippets": [
+        "workers = int(np.ceil(hours / hours_per_day))",
+        "workers = min(workers, max_workers_per_trade)",
+        "workers_needed=workers",
+        "total_hours=hours,",
+        "peak_workers = max(daily_totals.values())"
+      ],
+      "poc": {
+        "daily_hours": 800,
+        "hours_per_day": 8,
+        "workers_needed_uncapped": 100,
+        "workers_needed_capped": 50,
+        "daily_shortfall_hours": 400,
+        "shortage_flag": false
+      }
+    },
+    {
+      "id": "DDC-CWICR-EQUIP-CONCURRENT-CAPACITY-IGNORE-2026-10-14",
+      "severity": "MEDIUM",
+      "title": "Equipment planner merges concurrent same-type demand into one unit by stretching days",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-equipment-planner/SKILL.md",
+      "evidence_lines": [205, 225, 229, 232, 246, 250, 255, 262],
+      "description": "extract_equipment_requirements aggregates by equipment description: hours are summed and start/end span the union of activities. Only one EquipmentItem is emitted; days_needed=ceil(hours/8) stretches the rental instead of adding units when concurrent daily demand exceeds one machine's 8h capacity. generate_equipment_plan schedule lists a single description per day.",
+      "impact": "Two overlapping excavation packages that each need a full-time excavator are planned as one longer rental → on-site capacity shortfall / false availability.",
+      "attack_path": [
+        "Submit two items sharing equipment description with overlapping start_day/duration and high equipment_norm*qty.",
+        "Aggregator merges hours and min/max days into one equip_key.",
+        "One EquipmentItem created; schedule appends one description per date.",
+        "Field follows plan expecting one machine for concurrent scopes."
+      ],
+      "why_not_duplicate": "Not fleet-manager double-book IN_USE or site-logistics crane tonnage. CWICR equipment-planner specific merge-by-description capacity ignore.",
+      "key_snippets": [
+        "equipment[equip_key]['hours'] += equip_hours",
+        "days_needed = int(np.ceil(hours / 8))",
+        "actual_days = max(days_needed, data.get('end_day', 0) - data.get('start_day', 0))",
+        "utilization = hours / available_hours",
+        "result.append(EquipmentItem(...))  # one per description"
+      ],
+      "poc": {
+        "behavior": "concurrent full-time demand merged to single unit with stretched days",
+        "units_emitted": 1
+      }
+    },
+    {
+      "id": "DDC-CWICR-REPORT-HTML-XSS-2026-10-14",
+      "severity": "MEDIUM",
+      "title": "Report generator interpolates unsanitized project/category/line fields into HTML",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-report-generator/SKILL.md",
+      "evidence_lines": [92, 119, 120, 165, 185, 200, 203, 204],
+      "description": "add_breakdown_by_category, add_line_items, and generate_html embed category, description, code, and project_name into HTML via f-strings with no escaping. save_html writes the raw string to output_path.",
+      "impact": "Stored XSS when the HTML report is opened in a browser (session/cookie theft, fake bid figures in DOM).",
+      "attack_path": [
+        "Supply project_name or category/description containing <script> or event-handler markup.",
+        "Generator builds sections/html with raw interpolation.",
+        "save_html writes cost_report.html.",
+        "Victim opens report → script executes in report origin."
+      ],
+      "why_not_duplicate": "Prior clash to_html XSS near-miss was discarded because pandas escaped. This skill writes raw f-string HTML with no escape.",
+      "key_snippets": [
+        "rows += f\"<tr><td>{category}</td><td class='amount'>${cost:,.2f}</td></tr>\"",
+        "<td>{item.get('description', '')[:50]}</td>",
+        "<title>Cost Report - {self.project_name}</title>",
+        "<p>Project: {self.project_name}</p>",
+        "f.write(html)"
+      ],
+      "poc": {
+        "payload_example": "<img src=x onerror=alert(1)>",
+        "sinks": ["project_name", "category", "description", "code"]
+      }
+    },
+    {
+      "id": "DDC-CWICR-ASSEMBLY-SILENT-OVERWRITE-2026-10-14",
+      "severity": "MEDIUM",
+      "title": "create_assembly silently overwrites existing assembly_code templates",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-assembly-builder/SKILL.md",
+      "evidence_lines": [104, 119, 130, 158, 161, 177],
+      "description": "create_assembly always does self._assemblies[assembly_code]=assembly with no existence check, authZ, or version conflict. quantity_per_unit is unbounded (including 0/negative). apply_assembly then prices from the replaced template.",
+      "impact": "Canonical assemblies (e.g. SLAB-100 from create_standard_assemblies) can be replaced with near-zero-cost item sets → understated estimates wherever the code is reused.",
+      "attack_path": [
+        "create_standard_assemblies() or load library with SLAB-100 at real cost.",
+        "Call create_assembly(assembly_code='SLAB-100', items=[{'code':'X','quantity_per_unit':0}, ...]).",
+        "Dict entry overwritten; apply_assembly('SLAB-100', qty) returns near-zero total_cost.",
+        "Downstream estimate/export uses poisoned template."
+      ],
+      "why_not_duplicate": "Not cwicr-location-factor add_location rate overwrite and not rate-updater. This is assembly-template library overwrite on leftover assembly-builder.",
+      "key_snippets": [
+        "qty_per_unit = item_def.get('quantity_per_unit', 1)",
+        "self._assemblies[assembly_code] = assembly",
+        "cost = item.total_cost * quantity * location_factor"
+      ],
+      "poc": {
+        "overwrite": "SLAB-100 → zero-qty items",
+        "authz": "none",
+        "version_check": "none"
+      }
+    }
+  ],
+  "discarded_near_misses": [
+    "price_overrides / constructor overhead_rate·profit_rate unbounded — sibling of already-reported rate-updater / overhead-markup; skipped per prompt.",
+    "apply_assembly location_factor unbounded — location-factor known class.",
+    "waste-calculator custom_factors negative/unbounded — soft factor class; weaker than quantity-matcher fail-open into QTO money.",
+    "historical-cost complete_project status forge + suggest_adjustment_factors poison — analytics/benchmark only; weaker than permit ISSUED / EVM forge SoR.",
+    "crew-optimizer / takeoff / unit-converter negative or default bar_size=1.0 — calculator-only; unit helper fail-open weak.",
+    "productivity-tracker planned_quantity=actual_quantity — analytics tautology, no payment SoR.",
+    "data-loader / export output_path traversal — same class as already-reported csv-handler / bim-cost path writes.",
+    "data-loader / multilingual str.contains regex ReDoS — DoS without money/safety SoR.",
+    "data-validator — correctly ERROR on negative POSITIVE_FIELDS; no fail-open gate.",
+    "comparison-tool — pure variance math; no forge/authZ sink.",
+    "semantic-search-cwicr — Qdrant/OpenAI wiring; no business-logic forge in skill body.",
+    "apply_custom_mapping forges Confidence.HIGH without recalculating unit_conversion_factor — subsumed by stronger unit fail-open finding.",
+    "S-curve distribute_cost weight quirk — math drift, not attacker forge."
+  ]
+}
