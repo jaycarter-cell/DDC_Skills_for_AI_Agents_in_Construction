@@ -1,0 +1,35 @@
+{
+  "hunt": "cost-financial-contract-procurement-business-logic-authz",
+  "date": "2026-10-21",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/vulnerability-finding-memory-32f1",
+  "result": "1 HIGH",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md",
+      "title": "Failed mandatory min_score still yields CONDITIONALLY_QUALIFIED and is returned by get_qualified()",
+      "description": "_evaluate_qualification sets passed=False when any criterion is below min_score (e.g. Insurance/Bonding min 7). QUALIFIED correctly requires passed and total>=60, but the elif total_score>=50 branch does not require passed, so a sub that fails Insurance with 0 still becomes CONDITIONALLY_QUALIFIED when other scores pad the total to 50. get_qualified() includes CONDITIONALLY_QUALIFIED, so the failed-min contractor is returned for award/shortlist. Distinct from prior TK-L04 (EMR/documents ignored when mins are met) and unbounded max_score inflation.",
+      "impact": "A subcontractor who fails mandatory Insurance/Bonding (or Safety) minimums still appears in get_qualified() and can be awarded work. Lien/bonding/insurance exposure on the project.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Operator deploys SubcontractorPrequalification as the live prequal/award gate (Quick Start get_qualified).\n2. Attacker is a bidder (or colluding scorer) whose Insurance/Bonding score is 0 (below min 7) while other criteria are maxed to total 50.\n3. score_application → _evaluate_qualification sets passed=False but elif total>=50 stamps CONDITIONALLY_QUALIFIED.\n4. get_qualified(trade) returns the contractor for award.",
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:61-68",
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:98-111",
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:113-119"
+      ],
+      "remediation": "Require passed on every branch: elif passed and app.total_score >= 50 for CONDITIONALLY_QUALIFIED. Exclude CONDITIONALLY_QUALIFIED from get_qualified() unless an explicit include_conditional flag is set. Clamp scores to [0, max_score].",
+      "poc_video_notes": "Video not feasible — SKILL.md template Python with no product UI. Local PoC: security-findings/poc_cost_financial_authz_hunt_2026-10-21.py — Insurance=0 + others=10 → status=conditionally_qualified and present in get_qualified('Electrical')."
+    }
+  ],
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_cost-financial-procurement-authz-hunt-2026-10-21.json",
+  "poc": "security-findings/poc_cost_financial_authz_hunt_2026-10-21.py",
+  "discarded_near_misses": [
+    "retention release / pay-app SOV+draft / sub-pay no waiver / lien RECEIVED / CO draft approve / paygen overbill — already flagged-56 or c85ddf9",
+    "prequal EMR/docs (TK-L04) and unbounded max_score — already reported; this finding is the failed-min elif hole",
+    "bid uncapped scores — procurement audit; evaluator-trusted",
+    "material-delivery full-receipt assume — no money sink",
+    "cashflow/budget revise — reporting only"
+  ]
+}

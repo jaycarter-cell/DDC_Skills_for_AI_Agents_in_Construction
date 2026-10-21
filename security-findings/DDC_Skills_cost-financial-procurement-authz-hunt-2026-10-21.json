@@ -1,0 +1,46 @@
+{
+  "hunt": "cost-financial-contract-procurement-business-logic-authz",
+  "date": "2026-10-21",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/vulnerability-finding-memory-32f1",
+  "result": "1 HIGH new (rest already reported in flagged-56 / financial-contract-logic-2026-09-29 / toolkit-leftover-2026-10-06)",
+  "scope": [
+    "4_DDC_Curated/Contract-Legal/lien-waiver-tracker",
+    "4_DDC_Curated/Contract-Legal/change-order-manager",
+    "1_DDC_Toolkit/Cost-Management focus files",
+    "4_DDC_Curated/Financial-Management/*",
+    "1_DDC_Toolkit/Procurement/*"
+  ],
+  "skipped_already_reported": [
+    "claims notice/settle (user list)",
+    "change-order draft approve / negative cost (user list + flagged-56 + c85ddf9)",
+    "delay-analysis EOT forge (user list)",
+    "payment token placeholders (user list)",
+    "QTO cheap rule / CPM reverse import / weather fail-open / labor factor 1.0 (user list)",
+    "retention-tracker release_retention ignores conditions + forgeable lien_waivers (flagged-56 CRITICAL)",
+    "payment-application-processor SOV overbill / draft approve / approved_amount (flagged-56 HIGH)",
+    "payment-application-generator SOV overbill + negative retainage (flagged-56 / c85ddf9)",
+    "subcontractor-payment-tracker pay without waiver + uncapped invoice (flagged-56 HIGH)",
+    "lien-waiver-tracker can_release on RECEIVED (flagged-56 MEDIUM)",
+    "prequal EMR/documents ignored when mins+total pass (toolkit-leftover TK-L04)",
+    "prequal unbounded max_score / documents_received (procurement security-audit)"
+  ],
+  "findings": [
+    {
+      "severity": "high",
+      "title": "Failed mandatory min_score still yields CONDITIONALLY_QUALIFIED and is returned by get_qualified()",
+      "location": "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md",
+      "evidence": ["98-119", "61-68"],
+      "verified": true
+    }
+  ],
+  "discarded_near_misses": [
+    "Re-validated retention/pay-app/sub-pay/lien bugs — already in flagged-56; not re-filed",
+    "change-order-manager draft approve — already-reported class",
+    "bid-analysis uncapped scores — already in procurement audit; evaluator-trusted",
+    "material-delivery receive_delivery empty qty assumes full receipt — no payment mutation",
+    "cashflow/budget revise_budget/use_contingency — reporting only (prior discard)",
+    "lien auto amount_approved from request — chained to already-reported can_release advisory"
+  ],
+  "poc": "security-findings/poc_cost_financial_authz_hunt_2026-10-21.py"
+}
