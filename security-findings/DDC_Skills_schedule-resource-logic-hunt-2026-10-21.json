@@ -1,0 +1,154 @@
+{
+  "hunt": "schedule-resource-safety-business-logic",
+  "date": "2026-10-21",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/vulnerability-finding-memory-32f1",
+  "run": "https://cursor.com/agents/bc-e73bd6db-f850-5918-a241-feda2d05b76a",
+  "result": "7 HIGH",
+  "scope": [
+    "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler",
+    "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer",
+    "3_DDC_Insights/Schedule-Optimization/schedule-compression",
+    "5_DDC_Innovative/progress-monitoring-cv",
+    "5_DDC_Innovative/equipment-telematics",
+    "5_DDC_Innovative/material-tracking-iot",
+    "5_DDC_Innovative/permit-tracking-automation",
+    "5_DDC_Innovative/open-construction-estimate",
+    "5_DDC_Innovative/portfolio-dashboard",
+    "3_DDC_Insights/Safety-Quality/safety-inspection-checklist",
+    "1_DDC_Toolkit/Field-Operations/*",
+    "1_DDC_Toolkit/Resource-Management/*"
+  ],
+  "skipped_already_reported": [
+    "weather-impact-analysis fail-open empty/sample forecast",
+    "safety-compliance-checker hot-work/CS fail-open",
+    "environmental-monitoring TWA datetime.now() skip",
+    "defect-detection-ai ignores dimensions_mm",
+    "permit is_valid fail-open (reconfirmed in permit-tracking-automation Quick Start)",
+    "incident NEAR_MISS",
+    "toolbox attendance",
+    "QC acceptance/NCR",
+    "warranty claim/expiring",
+    "as-built approve/empty FINAL",
+    "contractor cert valid_until fail-open",
+    "enterprise-risk-aggregator prob fail-open",
+    "sensor structural threshold fail-open",
+    "CPM reverse import",
+    "delay-analysis EOT forge",
+    "site-logistics storage overbook",
+    "prefab blocks_modules ignored",
+    "energy empty envelope compliant",
+    "clash silent geometry skip"
+  ],
+  "findings": [
+    {
+      "severity": "high",
+      "title": "Look-ahead make-ready skips missing predecessors so work is marked can_start",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:201-218",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:126-152",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:258-264"
+      ],
+      "attack_path": "1. Operator deploys LookAheadScheduler.analyze_make_ready / generate_daily_plan as the live make-ready gate.\n2. Attacker (scheduler/BIM export) imports a look-ahead window that includes successor steel/MEP but omits unfinished predecessors outside the window (or drops them from master_activities).\n3. pred_complete uses `for p in act.predecessors if p in self.activities`, so missing IDs are skipped; `all([])` is True.\n4. With no open constraints, can_start=True and generate_daily_plan dispatches the crew onto incomplete predecessors.",
+      "why_not_blocked": "No fail-closed check that every predecessor id exists and is COMPLETE; window filtering silently drops FS links.",
+      "poc_idea": "Activity A200 predecessors=['A050'] with only A200 imported → can_start True; daily plan includes A200.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Resource leveling has no FS links and can start predecessors after successors",
+      "location": "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:56-64",
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:184-201",
+        "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md:282-298"
+      ],
+      "attack_path": "1. Operator uses ResourceOptimizer.level_resources() as the live crew/crane schedule.\n2. Foundation (A, float) and steel (B, critical) share a capacity-1 crane and overlap.\n3. Leveling only shifts non-critical activities and _find_valid_start only checks resource capacity — Activity has no predecessors field.\n4. Result starts A on day 15 while critical B remains on day 5 → steel authorized before foundation finishes.",
+      "why_not_blocked": "No predecessor/successor model; critical path activities are never shifted so the only resolution is moving the predecessor later.",
+      "poc_idea": "A ES=0 float, B ES=5 critical, both CRANE:1 → after level_resources starts A=15, B=5.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Schedule compression forges achieved_reduction and fast-track duration without CPM",
+      "location": "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md",
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:218-227",
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:255-283",
+        "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md:297-323"
+      ],
+      "attack_path": "1. Operator uses crash_schedule / optimize_compression for LD/EOT recovery plans.\n2. Parallel critical paths: crashing Path1 days does not shorten the project while Path2 remains.\n3. days_achieved increments per crash day; CompressionPlan.achieved_reduction uses that counter, not original−new CPM duration.\n4. fast_track_schedule subtracts caller-supplied overlap_days from duration without mutating the network; optimize_compression adds inflated crash+FT into new_project_duration.",
+      "why_not_blocked": "achieved_reduction is not recomputed from calculate_project_duration(); fast-track never applies overlaps to predecessors.",
+      "poc_idea": "Two parallel 25d paths crash 10 days → claimed achieved=10, actual duration drop=0. FT overlap 25 → reported duration 25 while A still 20d.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Fleet assign_equipment double-books IN_USE and pulls units out of MAINTENANCE",
+      "location": "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md",
+      "evidence": [
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:105-125",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:144-149"
+      ],
+      "attack_path": "1. Operator uses assign_equipment as the live dispatch API (get_available_equipment is display-only).\n2. Attacker assigns the same crane to SiteA then SiteB without return_equipment.\n3. Both Assignment records stick; status stays IN_USE.\n4. Same call also succeeds when status was MAINTENANCE/REPAIR, forcing IN_USE and authorizing overloaded/unsafe equipment on a second site.",
+      "why_not_blocked": "assign_equipment only checks equip_id existence; never requires AVAILABLE or clear prior open assignments.",
+      "poc_idea": "assign SiteA then SiteB → 2 assignments; set MAINTENANCE then assign SiteC → succeeds, status IN_USE.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Labor assign_worker only warns on conflicts then keeps both assignments on the roster",
+      "location": "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md",
+      "evidence": [
+        "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md:141-157",
+        "1_DDC_Toolkit/Resource-Management/labor-allocation/SKILL.md:182-201"
+      ],
+      "attack_path": "1. Operator uses assign_worker + get_daily_roster for crew dispatch.\n2. Attacker (or agent) assigns the same ironworker to overlapping ZoneA and ZoneB activities.\n3. check_conflicts finds the overlap but only prints a Warning; assignment is still appended.\n4. Daily roster lists both activities → one zone is staffed on paper while the certified worker cannot be in two places (unsafe/under-crewed work authorized).",
+      "why_not_blocked": "Conflict detection is advisory; no return None / raise on overlap; no check for ON_LEAVE/SICK/TERMINATED either.",
+      "poc_idea": "Two overlapping assign_worker calls → len(assignments)==2 and get_daily_roster has both rows.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Telematics CRITICAL faults never flip status to FAULT so equipment stays dispatchable",
+      "location": "5_DDC_Innovative/equipment-telematics/SKILL.md",
+      "evidence": [
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:66-72",
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:216-222",
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:260-262",
+        "5_DDC_Innovative/equipment-telematics/SKILL.md:350-354"
+      ],
+      "attack_path": "1. Operator uses get_current_status / generate_report as the go/no-go for crane dispatch.\n2. ingest_reading with coolant_temp=120 creates COOLANT_TEMP_HIGH CRITICAL via _check_diagnostics.\n3. operating_status is still derived only from engine_rpm/load (OPERATING).\n4. get_current_status returns status='operating' with active_faults>0; fleet report shows operating — crane stays authorized.",
+      "why_not_blocked": "OperatingStatus.FAULT and FaultSeverity.SHUTDOWN exist but ingest_reading never sets them; status path ignores active faults.",
+      "poc_idea": "coolant_temp=120, rpm=1500 → CRITICAL fault present and status=='operating'.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "title": "Punch verify_item accepts OPEN CRITICAL items without completion or rework gate",
+      "location": "1_DDC_Toolkit/Field-Operations/punch-list-manager/SKILL.md",
+      "evidence": [
+        "1_DDC_Toolkit/Field-Operations/punch-list-manager/SKILL.md:345-363",
+        "1_DDC_Toolkit/Field-Operations/punch-list-manager/SKILL.md:366-380"
+      ],
+      "attack_path": "1. Operator uses PunchListManager for final/occupancy punch closeout.\n2. Attacker creates a CRITICAL life-safety punch (e.g. missing fire damper) and calls verify_item(..., accepted=True) while status is still OPEN.\n3. No requirement for READY_FOR_VERIFICATION, photo_after, or prior mark_complete.\n4. Item becomes ACCEPTED; get_statistics completion_rate=100% → forged closeout authorizing occupancy with open life-safety defects.",
+      "why_not_blocked": "verify_item has no status precondition and does not inspect priority/trade before ACCEPTED.",
+      "poc_idea": "add CRITICAL fire-protection item → verify_item accept from OPEN → ACCEPTED and completion_rate 100.",
+      "verified": true
+    }
+  ],
+  "discarded_near_misses": [
+    "permit-tracking-automation check_permit_status is_valid — already reported permit is_valid fail-open (reconfirmed: missing docs ignored)",
+    "safety-inspection-checklist all-NA → 100% score / critical flag unused — prior near-miss 'safety critical→NA score'",
+    "portfolio-dashboard cpi/spi default 1.0 on import → GREEN health — dashboard telemetry, not a field work gate",
+    "open-construction-estimate low-confidence match still priced into total — money underbid; outside safety/schedule gate focus",
+    "progress-monitoring-cv color heuristics / empty detections → phase ENCLOSURE 60% — no authorization sink",
+    "material-tracking-iot storage is_acceptable alerts without blocking usage — alert-only, no can_install gate",
+    "daily-report-generator weather API fail → mock weather — PDF display only, not go/no-go",
+    "Field-Operations/safety-inspection overall_rating never computed; _days_since_recordable returns 365 — incomplete metrics, weak chain",
+    "equipment-telematics geofence allowed_equipment exit logic quirks — no work authorization sink",
+    "schedule-compression identify_critical_path trusts caller is_critical — subsumed by compression forge finding"
+  ],
+  "poc": "security-findings/poc_schedule_resource_logic_hunt_2026-10-21.py"
+}
