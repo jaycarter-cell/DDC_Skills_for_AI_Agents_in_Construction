@@ -1,0 +1,82 @@
+{
+  "hunt": "safety-bim-validation-env-dq-failopen-logic",
+  "date": "2026-10-30",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/security-findings-persistence-2025",
+  "run": "https://cursor.com/agents/bc-d55782d9-cd9a-5f49-bf2d-8e1cd41973fb",
+  "result": "6 HIGH + 1 MEDIUM",
+  "poc": "security-findings/poc_safety_bim_validation_logic_hunt_2026-10-30.py",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_safety-bim-validation-logic-hunt-2026-10-30.json",
+  "slack": "SendSlackMessage tool unavailable this run",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md",
+      "title": "BIMValidationPipeline._evaluate_pass ignores LOD report so LOD failures still passed=True",
+      "lines": [
+        "527-535",
+        "512-521",
+        "293",
+        "359-360"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
+      "title": "Excavation/scaffolding/electrical OSHA rules loaded but never evaluated in check_work_activity",
+      "lines": [
+        "168-211",
+        "221-317"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/environmental-monitoring/SKILL.md",
+      "title": "Empty readings stamp daily COMPLIANT; PM2.5/PM10 live status always COMPLIANT (TWA-only)",
+      "lines": [
+        "386-387",
+        "452-478",
+        "353-367",
+        "150-155"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Data-Validation/input-validation/SKILL.md",
+      "title": "BIMDataValidator returns PASSED for empty {} and nameless/typeless/geometry-less elements",
+      "lines": [
+        "307-348"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "2_DDC_Book/2.6-Data-Quality-Validation/data-quality-check/SKILL.md",
+      "title": "run_full_check drops falsy overall (0%) so missing required columns yield overall_score 100 PASSED",
+      "lines": [
+        "245-249",
+        "110",
+        "158",
+        "224",
+        "472"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md",
+      "title": "Contractor NCR response auto-sets ACCEPTED; verify_remediation closes defects without re-inspection",
+      "lines": [
+        "257-269",
+        "272-287"
+      ]
+    },
+    {
+      "severity": "medium",
+      "location": "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-consistency-checker/SKILL.md",
+      "title": "Missing is_bounded / room_bounding default True so enclosure checks are skipped",
+      "lines": [
+        "271-272",
+        "375"
+      ]
+    }
+  ]
+}
