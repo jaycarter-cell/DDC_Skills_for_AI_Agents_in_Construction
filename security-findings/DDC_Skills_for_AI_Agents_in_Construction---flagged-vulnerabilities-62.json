@@ -1,0 +1,26 @@
+{
+  "hunt": "injection-ssrf-rce-secrets-path-deser-rehunt",
+  "date": "2026-10-30",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/security-findings-persistence-2025",
+  "result": "1 HIGH",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_injection-ssrf-hunt-2026-10-30.json",
+  "poc": "security-findings/poc_n8n_bim_change_postgres_sqli_2026-10-30.py",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/n8n-workflow-automation/SKILL.md:194-195",
+      "title": "BIM Change Detection postgres executeQuery SQLi via JSON.stringify single-quote breakout",
+      "description": "Update Database node uses INSERT ... '{{ JSON.stringify($json) }}'. JSON.stringify does not escape single quotes. Compare returns full element dicts from extract stdout into $json. IFC-derived name/id containing '); DROP... breaks the SQL string. Distinct from already-reported executeCommand RCE; survives argv-safe command fixes.",
+      "impact": "Writer to /models can DROP/alter model_changes (and other tables if multi-statement allowed), falsifying BIM change history.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy BIM Change Detection as written.\n2. Drop evil.ifc under /models with element name Wall '); DROP TABLE model_changes;--\n3. extract → Compare puts elem in changes.added.\n4. executeQuery interpolates JSON.stringify($json); embedded ' terminates literal; DROP runs.",
+      "evidence": [
+        "5_DDC_Innovative/n8n-workflow-automation/SKILL.md:175-195",
+        "security-findings/poc_n8n_bim_change_postgres_sqli_2026-10-30.py"
+      ],
+      "remediation": "Parameterized postgres insert / queryReplacement; never interpolate JSON into SQL."
+    }
+  ]
+}
