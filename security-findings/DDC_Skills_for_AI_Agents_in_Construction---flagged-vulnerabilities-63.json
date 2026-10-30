@@ -1,0 +1,29 @@
+{
+  "hunt": "cost-financial-contract-procurement-business-logic-authz",
+  "date": "2026-10-30",
+  "commit": "d1998d8de68011f7b40541d47775bb6f3db9f0b9",
+  "branch": "cursor/security-findings-persistence-2025",
+  "result": "1 HIGH",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md",
+      "title": "Unknown/incompatible BIM\u2194CWICR units convert at 1.0; estimate_from_qto forces m\u00b3 \u2192 1000\u00d7 cost overbill",
+      "description": "BIMCostEstimator.estimate_element converts QTO quantity into the CWICR match unit via _convert_units, then multiplies by unit_price into official Excel totals. _convert_units returns conversions.get(key, 1.0) for any pair outside six entries (mm\u2192m, m\u00b3\u2192m\u00b2, ASCII aliases). estimate_from_qto (Quick Start estimate_from_bim_model) hardcodes quantity_unit=\"m\u00b3\" for every category. Distinct from already-reported prompt injection and project_name path traversal on this same skill, and from the separate cwicr-quantity-matcher skill.",
+      "impact": "Official BIM cost Estimate.xlsx overbills: 12 m pipe at $65/m becomes $780,000 when exported as 12000 mm. GMP/bid/pay-app baselines follow that total.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Operator deploys estimate_from_qto / estimate_element / estimate_from_bim_model.\n2. Attacker or Revit QTO supplies mm (or other unknown/incompatible units); estimate_from_qto also forces m\u00b3.\n3. _convert_units misses \u2192 factor 1.0; adjusted_qty stays raw.\n4. generate_estimate_report writes Total = qty \u00d7 CWICR unit_price.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:275-284",
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:317-323",
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:328-349",
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:366-407",
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:465-474"
+      ],
+      "remediation": "Fail closed on unknown/incompatible units. Add mm\u2194m. Map QTO column/category to unit instead of hardcoding m\u00b3. Do not emit Total Cost without a real conversion.",
+      "poc_video_notes": "Video not feasible \u2014 SKILL.md template. PoC: 12m@$65=$780; 12000mm@$65=$780000; ft\u00b2\u2192m\u00b2 still converts."
+    }
+  ],
+  "poc": "security-findings/poc_cost_financial_authz_hunt_2026-10-30.py"
+}
