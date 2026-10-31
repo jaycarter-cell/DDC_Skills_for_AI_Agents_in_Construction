@@ -1,0 +1,143 @@
+{
+  "hunt": "payment-changeorder-lien-telegram-n8n-procurement-business-logic-authz",
+  "date": "2026-10-31",
+  "bcId": "bc-fe67f97c-3e53-5843-8eec-d8dda7f81650",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/persistent-vulnerability-memory-handling-a677",
+  "result": "4 HIGH",
+  "scope_focus": [
+    "payment-application-generator",
+    "payment-application-processor",
+    "subcontractor-payment-tracker",
+    "change-order-processor",
+    "change-order-manager",
+    "cash-flow-forecaster",
+    "budget-variance-analyzer",
+    "material-delivery-tracker",
+    "lien-waiver-tracker",
+    "contract-clause-*",
+    "telegram-field-bot",
+    "n8n-pto-pipeline",
+    "n8n-project-management",
+    "claims-documentation",
+    "procurement",
+    "resource-pool-optimizer",
+    "schedule",
+    "digital-twin-sync",
+    "sensor-data-aggregator",
+    "cwicr-quantity-matcher"
+  ],
+  "skipped_already_reported_classes": [
+    "bim-cost-estimation-cwicr unknown units→1.0 + estimate_from_qto m³ force",
+    "BIM validation pipeline LOD pass ignored",
+    "Safety excav/scaffold/elec unevaluated",
+    "Env empty-day compliant",
+    "BIM validator empty pass",
+    "DQ falsy score excluded",
+    "QC NCR auto-accepted",
+    "BIM consistency bounded default",
+    "pay-app uncapped SOV / approve from DRAFT / negative retainage / post-approve mutate",
+    "sub-pay record_payment without APPROVED/waiver / negative retention_percent / uncapped invoice",
+    "lien can_release RECEIVED-as-verified / empty file_path / convert_to_unconditional overwrite / neg retainage_rate",
+    "change-order approve from DRAFT / post-approve cost mutate / curated approved_amount forge",
+    "material-delivery forge DELIVERED / vacuous empty receive",
+    "retention release ignore conditions / forgeable lien bool",
+    "claims submit/settle with overdue notices / DRAFT settlement",
+    "budget-variance percent_complete / adjust_budget / curated revise/contingency",
+    "cash-flow-forecaster negative retention",
+    "resource-pool max-overbook",
+    "digital-twin ScheduleTwinIntegrator percent_complete>=100 COMPLETED / unauth WS discarded",
+    "sensor SUSPECT fail-open",
+    "telegram/n8n missing field-report auth (generic local script / no money mutate)",
+    "cwicr-change-order update_status / bid unbounded / prequal CONDITIONALLY_QUALIFIED"
+  ],
+  "verified_by_executing_extracted_python": true,
+  "poc": "security-findings/poc_payapp_materials_g702_quantity_matcher_2026-10-31.py",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "title": "AIA materials presently-stored folded into prior work → re-entry overbills next G702",
+      "description": "PaymentApplicationGenerator.create_application rebuilds each SOV line with work_completed_previous = total_completed_current - materials_stored_current and materials_stored_previous = materials_stored_current from the master SOV. After an application is saved, the master zeros materials_stored_current and parks stored materials only in materials_stored_previous. On the next period, materials_stored_current on the master is 0, so prior stored materials are folded entirely into work_completed_previous and materials_stored_previous on the new app becomes 0. AIA G703 Column F is a presently-stored balance (re-entered each period), not an incremental debit. Re-entering the same stored materials (normal practice) adds them again on top of the already-folded work previous, inflating total_completed_to_date and current_payment_due.",
+      "impact": "Contractor (or anyone feeding progress) systematically inflates earned-to-date by the stored-materials balance each period materials remain on site. PoC: $100k work + $50k stored → next app with $0 work + $50k still stored bills $200k completed and +$45k due (10% retainage) instead of $150k / $0 incremental.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy PaymentApplicationGenerator as live progressive-billing / G702 path.\n2. Period 1: report work W and materials presently stored M.\n3. Period 2+: report work increments and re-enter materials presently stored M (correct AIA Column F).\n4. create_application folds M into work_completed_previous and adds M again as materials_stored_current.\n5. calculate_payment_due / generate_g702 / export_application emit inflated total_completed_to_date and current_payment_due; owner certifies/pays the overstated amount.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:58-61",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:178-218",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-253",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:260-282"
+      ],
+      "why_not_already_reported_class": "Prior pay-app finding was unapproved CO + uncapped single-period SOV progress > scheduled value. This is a distinct cross-period materials-balance accounting bug that overbills under honest AIA 'presently stored' usage without exceeding scheduled value in period 1.",
+      "remediation": "Treat materials stored as a point-in-time balance: carry materials_stored_previous from the prior application's materials_stored_current (not from a zeroed master current). Do not fold stored materials into work_completed_previous. Cap total completed+stored at scheduled value. Recalculate incremental due from last certificate only."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "title": "G702 previous_certificates sums every app's cumulative earned → negative due from app 3",
+      "description": "calculate_payment_due defaults previous_payments to sum(app.total_earned_less_retainage for all prior applications). total_earned_less_retainage is cumulative (total_completed_to_date − retainage), so summing them double/triple-counts prior certificates. AIA G702 'Less Previous Certificates' must be the prior cumulative certified amount (typically the immediately previous application's total earned less retainage), not the sum of each period's cumulative totals. generate_g702 copies that field into previous_certificates and current_payment_due.",
+      "impact": "From the third payment application onward, current_payment_due goes negative and collapses. PoC honest progress 100k/50k/50k/50k with 10% retainage yields G702 dues [90000, 45000, -45000, -180000] instead of [90000, 45000, 45000, 45000]. Owner/AP using the exported G702 underpays the contractor (financial fraud / payment denial).",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy PaymentApplicationGenerator.generate_g702 / export_application for multi-period billing.\n2. Create ≥3 applications with normal progressive work (no forgery required).\n3. Exported G702 previous_certificates = sum of cumulative earned across prior apps.\n4. current_payment_due becomes negative; payer certifies/pays the understated (or zero/clawback) amount.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:104-117",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-253",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:260-282"
+      ],
+      "why_not_already_reported_class": "Not the uncapped SOV / negative retainage / DRAFT approve class. Pure previous-certificate aggregation bug on cumulative fields; surfaces only on application ≥3.",
+      "remediation": "Set previous_certificates to the immediately prior application's total_earned_less_retainage (or sum of prior incremental payments actually certified), never sum of cumulative totals. Add a regression test for ≥3 periods."
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "Curated pay-app folds materials_stored into previous_completed → re-entry overbill",
+      "description": "PaymentApplicationProcessor.create_pay_app seeds each new line's previous_completed from the prior app as previous_completed + current_completed + materials_stored. materials_stored on the new app starts at 0. update_line_item then allows setting materials_stored again for the new period. Total completed = previous_completed + current_completed + materials_stored, so re-entering presently-stored materials double-counts them. Net amount due on app 2 becomes the retainage-adjusted overbill.",
+      "impact": "Same progressive-billing overpayment as the toolkit generator on the curated AIA processor path. PoC: app1 $100k work + $50k stored; app2 re-enter $50k stored → total_completed $200k and net_amount_due $45k instead of $150k / $0.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy curated PaymentApplicationProcessor for G702/G703.\n2. Complete app 1 with work + materials_stored.\n3. create_pay_app for period 2 (previous_completed already includes materials).\n4. update_line_item materials_stored=same balance.\n5. submit/approve/pay net_amount_due reflecting the inflated total.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:64-76",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:196-216",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:238-261",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:287-322"
+      ],
+      "why_not_already_reported_class": "Curated processor was in prior financial hunt scope but only sibling classes (DRAFT approve / uncapped) were skipped as already reported. Materials→previous_completed fold was not filed.",
+      "remediation": "Carry previous_completed from prior work only (previous+current), and carry materials_stored as the prior period's materials balance separately (replace, do not add into previous_completed). Cap against scheduled_value."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md",
+      "title": "Unknown/incompatible BIM↔CWICR units convert at 1.0 → cost-linked QTO overbill",
+      "description": "CWICRQuantityMatcher._get_unit_conversion returns UNIT_CONVERSIONS.get((from, to), 1.0). The table only has eight imperial↔metric pairs (sf/m2, cy/m3, lf/m, lb/kg). Unknown pairs including mm→m (common Revit length export) and incompatible pairs like m3→m2 silently return 1.0. match_element stores that factor; generate_cost_linked_qto multiplies bim_quantity * factor * CWICR unit_cost into Total Cost Excel/DataFrame used as estimate baseline.",
+      "impact": "Official cost-linked QTO overstates quantities and money. PoC: 12 m of pipe as 12000 mm matched to PIPE-001 @ $65/m → Total Cost $780,000 instead of $780 (1000×).",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy CWICRQuantityMatcher.match_quantities + generate_cost_linked_qto as BIM→cost path.\n2. Supply QTO lengths in mm (or any unit pair absent from UNIT_CONVERSIONS).\n3. _get_unit_conversion misses and returns 1.0.\n4. generate_cost_linked_qto writes inflated Quantity and Total Cost; bids/GMP/pay-app baselines follow.",
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:111-120",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:201-209",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:261-277",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:391-428"
+      ],
+      "why_not_already_reported_class": "Already-reported unit fail-open is bim-cost-estimation-cwicr BIMCostEstimator._convert_units + hardcoded m³ in estimate_from_qto. Prior hunt explicitly carved out this skill. This is CWICRQuantityMatcher on the Toolkit CWICR Quick Start cost-linked QTO path.",
+      "remediation": "Fail closed on unknown or cross-dimension unit pairs (raise / mark match MANUAL / refuse Total Cost). Add mm↔m (and mm2/mm3). Surface conversion_applied=false in exports."
+    }
+  ],
+  "discarded_near_misses": [
+    "n8n-cost-estimation Volume||Area||1 and prices.find first hit for every element — broken estimator, weaker intentional fraud chain than pay-app/QTO",
+    "telegram-field-bot / n8n-pto / n8n-project-management — no payment mutate; missing chat allowlist is generic field-bot auth",
+    "digital-twin unauth WS status_update — prior discard; ScheduleTwinIntegrator >=100 already reported",
+    "resource-pool-optimizer overlapping max(qty) undercount — already-reported pool max-overbook class",
+    "change-order-processor/manager approve from DRAFT / post-approve mutate — already reported",
+    "lien verify REQUESTED→VERIFIED / can_release RECEIVED — already reported / sibling",
+    "claims submit with overdue notices — already reported",
+    "retention release ignore conditions — already reported",
+    "subcontractor-payment record_payment without APPROVED — already reported",
+    "cash-flow negative retention / budget percent_complete — already reported"
+  ],
+  "slack": "unavailable",
+  "open_git_pr": "unavailable"
+}

@@ -1,0 +1,65 @@
+{
+  "hunt": "payment-changeorder-lien-telegram-n8n-procurement-business-logic-authz",
+  "date": "2026-10-31",
+  "bcId": "bc-fe67f97c-3e53-5843-8eec-d8dda7f81650",
+  "commit_pending": true,
+  "branch": "cursor/persistent-vulnerability-memory-handling-a677",
+  "result": "4 HIGH",
+  "poc": "security-findings/poc_payapp_materials_g702_quantity_matcher_2026-10-31.py",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_payapp-g702-quantity-matcher-hunt-2026-10-31.json",
+  "findings": [
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "title": "AIA materials presently-stored folded into prior work → re-entry overbills next G702",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:58-61",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:178-218",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-253",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:260-282"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "title": "G702 previous_certificates sums every app's cumulative earned → negative due from app 3",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:104-117",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-253",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:260-282"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "Curated pay-app folds materials_stored into previous_completed → re-entry overbill",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:64-76",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:196-216",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:238-261",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:287-322"
+      ]
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md",
+      "title": "Unknown/incompatible BIM↔CWICR units convert at 1.0 → cost-linked QTO overbill",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:111-120",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:201-209",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:261-277",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md:391-428"
+      ]
+    }
+  ],
+  "slack": "unavailable",
+  "open_git_pr": "unavailable"
+}
