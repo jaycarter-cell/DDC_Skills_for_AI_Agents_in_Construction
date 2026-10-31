@@ -2,7 +2,6 @@
   "hunt": "payment-changeorder-lien-telegram-n8n-procurement-business-logic-authz",
   "date": "2026-10-31",
   "bcId": "bc-fe67f97c-3e53-5843-8eec-d8dda7f81650",
-  "commit_pending": true,
   "branch": "cursor/persistent-vulnerability-memory-handling-a677",
   "result": "4 HIGH",
   "poc": "security-findings/poc_payapp_materials_g702_quantity_matcher_2026-10-31.py",
@@ -11,7 +10,7 @@
     {
       "severity": "high",
       "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
-      "title": "AIA materials presently-stored folded into prior work → re-entry overbills next G702",
+      "title": "AIA materials presently-stored folded into prior work \u2192 re-entry overbills next G702",
       "verified": true,
       "status": "active",
       "evidence": [
@@ -24,7 +23,7 @@
     {
       "severity": "high",
       "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
-      "title": "G702 previous_certificates sums every app's cumulative earned → negative due from app 3",
+      "title": "G702 previous_certificates sums every app's cumulative earned \u2192 negative due from app 3",
       "verified": true,
       "status": "active",
       "evidence": [
@@ -36,7 +35,7 @@
     {
       "severity": "high",
       "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
-      "title": "Curated pay-app folds materials_stored into previous_completed → re-entry overbill",
+      "title": "Curated pay-app folds materials_stored into previous_completed \u2192 re-entry overbill",
       "verified": true,
       "status": "active",
       "evidence": [
@@ -49,7 +48,7 @@
     {
       "severity": "high",
       "location": "1_DDC_Toolkit/CWICR-Database/cwicr-quantity-matcher/SKILL.md",
-      "title": "Unknown/incompatible BIM↔CWICR units convert at 1.0 → cost-linked QTO overbill",
+      "title": "Unknown/incompatible BIM\u2194CWICR units convert at 1.0 \u2192 cost-linked QTO overbill",
       "verified": true,
       "status": "active",
       "evidence": [
@@ -61,5 +60,6 @@
     }
   ],
   "slack": "unavailable",
-  "open_git_pr": "unavailable"
+  "open_git_pr": "unavailable",
+  "commit": "4f82ddc4bf827eef69d31e8755cb1adc47d4d97d"
 }
