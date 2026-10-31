@@ -1,0 +1,11 @@
+{
+  "hunt": "injection-ssrf-path-deser-xxe-ssti-header-rehunt",
+  "date": "2026-10-31",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/persistent-vulnerability-memory-handling-a677",
+  "result": "NONE",
+  "findings": [],
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_injection-ssrf-hunt-2026-10-31.json",
+  "detail": "security-findings/DDC_Skills_injection-ssrf-hunt-2026-10-31.json",
+  "slack": "unavailable"
+}

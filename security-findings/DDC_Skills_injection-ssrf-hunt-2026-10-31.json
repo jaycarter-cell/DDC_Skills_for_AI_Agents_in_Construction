@@ -1,0 +1,156 @@
+{
+  "hunt": "HIGH/CRITICAL injection complete-chain re-hunt",
+  "date": "2026-10-31",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/persistent-vulnerability-memory-handling-a677",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "scope": "SKILL.md and instructions.md with executable Python/JS/n8n samples",
+  "categories": [
+    "SQL injection",
+    "command injection",
+    "SSRF",
+    "template injection",
+    "path traversal",
+    "unsafe deserialization",
+    "XXE",
+    "header injection"
+  ],
+  "result": "NONE",
+  "findings": [],
+  "skipped_already_reported": [
+    {
+      "location": "5_DDC_Innovative/n8n-workflow-automation/SKILL.md:194-195",
+      "title": "BIM Change Detection postgres executeQuery SQLi via JSON.stringify",
+      "ref": "flagged-62 / user known-already"
+    },
+    {
+      "location": "5_DDC_Innovative/n8n-workflow-automation/SKILL.md:177-179",
+      "title": "BIM Change Detection executeCommand RCE via fileName interpolation",
+      "ref": "user known-already / flagged injection CRITICAL class"
+    },
+    {
+      "location": "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md:524-531",
+      "title": "Unauth /qto-extract webhook Execute Command RCE via model_path"
+    },
+    {
+      "location": "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md:117-119",
+      "title": "extract_from_api(api_url) SSRF via requests.get"
+    },
+    {
+      "location": "2_DDC_Book/3.4-ERP-Integration/erp-data-extractor/SKILL.md:275-290",
+      "title": "generate_sql_query f-string filter SQLi"
+    },
+    {
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder/SKILL.md",
+      "title": "WhereCondition/insert/update unescaped SQL string building"
+    },
+    {
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:161-174",
+      "title": "split_csv path traversal via group values"
+    },
+    {
+      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md:431-432",
+      "title": "attachment open() arbitrary file read → SMTP exfil"
+    },
+    {
+      "location": "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md",
+      "title": "project_name path traversal / unit-convert 1.0 overbill (latter out of injection scope)",
+      "ref": "user known-already for unit convert"
+    },
+    {
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-data-loader/SKILL.md",
+      "title": "pandas read_* URL/source SSRF"
+    },
+    {
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-daily-report|n8n-photo-report|rfi-management",
+      "title": "Unauth n8n webhooks (authZ/integrity class; not re-filed as injection)"
+    }
+  ],
+  "discarded_near_misses": [
+    {
+      "candidate": "n8n Revit→Budget hardcoded http://api.construction-prices.com/match POST of BIM elements",
+      "evidence": [
+        "5_DDC_Innovative/n8n-workflow-automation/SKILL.md:71-77"
+      ],
+      "why": "construction-prices.com is NXDOMAIN (Google DNS Status=3) and would exfil element JSON if claimed, but this is hardcoded destination / domain-claim risk — not classic SSRF (no attacker-supplied URL) and outside other listed categories."
+    },
+    {
+      "candidate": "excel-to-rvt DynamoScriptGenerator excel_path / schedule_name / category f-string into generated Python",
+      "evidence": [
+        "1_DDC_Toolkit/CAD-Converters/excel-to-rvt/SKILL.md:159",
+        "1_DDC_Toolkit/CAD-Converters/excel-to-rvt/SKILL.md:258-264"
+      ],
+      "why": "Confirmed quote-breakout code injection into generated Dynamo script, but no remote/network ingress in skill (operator/AI local codegen → manual Dynamo run). Same incomplete-chain class as prior Dynamo discards; not shell command injection or SSTI."
+    },
+    {
+      "candidate": "n8n-cost-estimation RvtExporter.exe \"${filePath}\" shell interpolation",
+      "evidence": [
+        "3_DDC_Insights/Automation-Workflows/n8n-cost-estimation/SKILL.md:54-57"
+      ],
+      "why": "Classic cmdinj sink but no documented webhook/trigger supplying file_path — prior discard."
+    },
+    {
+      "candidate": "airflow-dag generate_dag_code f-string bash_command/dag_id into Python source",
+      "evidence": [
+        "2_DDC_Book/4.2-ETL-Automation/airflow-dag/SKILL.md:166-195"
+      ],
+      "why": "Operator-controlled DAG builder; no remote attacker input path."
+    },
+    {
+      "candidate": "xml-reader / IDSValidator ET.parse",
+      "evidence": [
+        "2_DDC_Book/2.1-Data-Types-Classification/xml-reader/SKILL.md:40-50",
+        "2_DDC_Book/4.3-BIM-Validation-Pipeline/bim-validation-pipeline/SKILL.md:387"
+      ],
+      "why": "xml.etree.ElementTree does not expand external entities by default — no XXE."
+    },
+    {
+      "candidate": "pickle.load / joblib.load / torch.load",
+      "evidence": [
+        "2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-retrainer/SKILL.md:352",
+        "5_DDC_Innovative/risk-assessment-ml/SKILL.md:357",
+        "5_DDC_Innovative/defect-detection-ai/SKILL.md:192"
+      ],
+      "why": "Unsafe deser sinks exist but load paths are operator-supplied with no untrusted auto-load ingress."
+    },
+    {
+      "candidate": "CAD-Converters subprocess.run list argv",
+      "why": "shell=False with static CLI flags; user asked to skip static-arg converter issues."
+    },
+    {
+      "candidate": "email Subject CRLF header injection",
+      "why": "Python email policy HeaderParseError fails closed (prior); n8n email subjects tied to already-reported unauth webhooks."
+    },
+    {
+      "candidate": "historical-data-manager Access table f-string into pd.read_sql",
+      "evidence": [
+        "2_DDC_Book/1.1-Data-Evolution/historical-data-manager/SKILL.md:147"
+      ],
+      "why": "Table names come from the Access catalog of an attacker-supplied MDB — attacker already controls file contents; limited extra gain."
+    },
+    {
+      "candidate": "cwicr/kpi/gantt/pdf HTML f-string interpolation",
+      "why": "Stored XSS if opened in browser, not SSTI/template-engine injection; out of listed categories."
+    },
+    {
+      "candidate": "prompt-templates Template.safe_substitute",
+      "why": "safe_substitute does not evaluate expressions — not SSTI."
+    },
+    {
+      "candidate": "weather/price/open-data/daily-report-generator API clients",
+      "why": "Fixed allowlisted hosts; lat/lon/location only as query params — no SSRF."
+    }
+  ],
+  "searched_patterns": [
+    "f-string / % / concat SQL",
+    "shell=True / os.system / executeCommand / bash_command",
+    "requests.get/post user URL / webhook_url / httpRequest",
+    "open/Path join user path / split_csv",
+    "pickle/joblib/torch.load / yaml.load",
+    "xml.etree / lxml / XXE",
+    "jinja2 / Template / SSTI",
+    "email Subject/Content-Disposition header injection"
+  ],
+  "code_changed_since_prior_injection_hunts": false,
+  "slack": "unavailable"
+}
