@@ -1,0 +1,10 @@
+{
+  "title": "CO / retention / lien / pay-app workflow-gate bypass hunt",
+  "date": "2026-11-01",
+  "bcId": "bc-d8383e5e-3bb2-5d6a-bbe6-47fd0a142d2a",
+  "repo": "github.com/jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "result": "6 HIGH",
+  "poc": "security-findings/poc_co_retention_lien_payapp_workflow_bypass_2026-11-01.py",
+  "findings_file": "security-findings/DDC_Skills_for_AI_Agents_in_Construction---flagged-vulnerabilities-66.json"
+}

@@ -1,0 +1,132 @@
+{
+  "hunt": "cost-cwicr-financial-contract-procurement-business-logic-authz",
+  "date": "2026-11-01",
+  "bcId": "bc-d8383e5e-3bb2-5d6a-bbe6-47fd0a142d2a",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/at-rest-security-review-c16c",
+  "result": "6 HIGH",
+  "poc": "security-findings/poc_co_retention_lien_payapp_workflow_bypass_2026-11-01.py",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_co-retention-lien-payapp-workflow-bypass-hunt-2026-11-01.json",
+  "skipped_already_reported": [
+    "payment-application-generator materials presently-stored / G702 previous_certificates",
+    "payment-application-processor materials_stored into previous_completed",
+    "bim-cost-estimation-cwicr and cwicr-quantity-matcher units→1.0",
+    "n8n BIM Change Detection postgres SQLi",
+    "Safety/BIM/env/DQ fail-open (flagged-61)"
+  ],
+  "findings": [
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+      "title": "approve_change_order skips PENDING_APPROVAL gate; DRAFT CO inflates contract",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:222-231",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:233-250",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:252-270",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:310-316"
+      ],
+      "attacker": "Insider or agent with create+approve access (or compromised skill caller)",
+      "controls": "submit_for_review / submit_for_approval enforce status; approve_change_order does not",
+      "impact": "Arbitrary DRAFT change order marked APPROVED; get_summary adds total_cost to current_contract"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md",
+      "title": "approve_change_order from DRAFT with uncapped approved_amount → execute",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:261-272",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:274-288",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:302-316",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:343-368"
+      ],
+      "attacker": "Caller controlling approve_change_order args",
+      "controls": "execute_change_order checks APPROVED only; approve has no prior-status or amount vs proposed check",
+      "impact": "DRAFT→APPROVED→EXECUTED at attacker-chosen dollars; revised_contract inflated"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md",
+      "title": "release_retention ignores check_release_conditions; releases with lien_waivers=False",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:178-220",
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:250-281",
+        "4_DDC_Curated/Financial-Management/retention-tracker/SKILL.md:449-459"
+      ],
+      "attacker": "Anyone invoking release_retention (or automation that ignores check result)",
+      "controls": "check_release_conditions exists and returns ready_for_release=False; release_retention never calls it; lien_waivers flag is recorded only",
+      "impact": "Full retainage payout without lien waiver / surety / closeout docs"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md",
+      "title": "Unverified RECEIVED waivers set waivers_complete and unlock can_release_payment",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:177-192",
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:194-203",
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:236-255",
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:340-364"
+      ],
+      "attacker": "Subcontractor (or anyone) uploading a file path via receive_waiver without verification",
+      "controls": "verify_waiver is a separate required step in the documented workflow but is not required by the release gate; reason string falsely says verified",
+      "impact": "Payment release authorized on unverified/unsigned waiver → lien exposure"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md",
+      "title": "approve_pay_app from DRAFT with uncapped approved_amount; record_payment ungated",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:324-333",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:335-346",
+        "4_DDC_Curated/Financial-Management/payment-application-processor/SKILL.md:348-363"
+      ],
+      "attacker": "Caller of approve_pay_app / record_payment",
+      "controls": "Workflow diagram requires Submit→Review→Approve; approve_pay_app checks only existence; approved_amount not capped to net_amount_due; record_payment does not require APPROVED",
+      "impact": "Overbill: DRAFT app approved/paid far above calculated net due"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+      "title": "record_payment marks PAID without APPROVED status or lien waiver",
+      "verified": true,
+      "status": "active",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:149-156",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:158-168",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:170-185",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:203-214"
+      ],
+      "attacker": "Caller of record_payment",
+      "controls": "approve_payment and attach_lien_waiver exist; record_payment ignores both; get_missing_waivers is post-hoc only",
+      "impact": "Sub payment recorded complete without approval or waiver → compliance/lien exposure"
+    }
+  ],
+  "checked_no_new_medium_plus": [
+    "budget-variance-analyzer (toolkit + curated): forecast/variance math only",
+    "cash-flow-forecaster / cashflow-forecaster: retainage withhold+release consistent when S_CURVE sums to 1",
+    "material-delivery-tracker: logistics status only",
+    "cwicr-overhead-markup: rates as fractions; ON_COST vs ON_COST_PLUS intentional",
+    "cwicr-escalation: /100 on annual rates correct",
+    "cwicr-waste-calculator: factors as fractions applied correctly",
+    "cwicr-bid-analyzer: advisory flags; unknown codes use bid rate (no overbill chain)",
+    "cwicr-rate-updater: percentage/100 multiplier correct",
+    "cwicr-cost-calculator: missing items return MISSING_DATA (fail closed on cost)",
+    "cwicr-location-factor: unknown location returns unadjusted base (underbill risk; no clear attacker money chain at HIGH)",
+    "cwicr-material-substitution / value-engineering / risk-calculator: advisory VE/risk only",
+    "cwicr-change-order update_status free + summary includes drafts: related to finding 1/2 pattern but weaker money path without approve semantics",
+    "claims-documentation record_settlement: records outcome; no payment release gate",
+    "contract-clause-extractor: NLP extraction only",
+    "procurement bid-analysis-comparator / material-tracker / material-procurement-tracker / prequalification: scoring advisory; weights unused but no payment gate"
+  ],
+  "slack": "unavailable",
+  "open_git_pr": "unavailable"
+}
