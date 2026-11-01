@@ -1,0 +1,138 @@
+{
+  "hunt": "injection-ssrf-rce-path-deser-webhook-telegram-auth-rehunt",
+  "date": "2026-11-01",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "branch": "cursor/at-rest-security-review-c16c",
+  "run": "bc-ea80cc56-467c-5916-b09c-d08d71178449",
+  "result": "1 CRITICAL + 5 HIGH",
+  "skipped_known": [
+    "5_DDC_Innovative/n8n-workflow-automation/SKILL.md postgres SQLi JSON.stringify",
+    "same skill executeCommand {{ $json.fileName }} (may already be known)"
+  ],
+  "checked_no_new_medium_plus": [
+    "subprocess.run argv-list CAD converters (no shell=True)",
+    "pickle.load in ml-model-retrainer (no untrusted upload source)",
+    "xml.etree ElementTree (safe vs XXE)",
+    "sql-query-builder / erp generate_sql_query (string builders, no execute)",
+    "historical-data-manager Access table brackets (table names from driver catalog)",
+    "email-construction SMTP Subject assignment (no external attacker-controlled intake in skill)",
+    "f-string HTML reports (XSS-ish, not SSTI; no clear unauthenticated HTML render chain)",
+    "n8n-cost-estimation RvtExporter file_path (no webhook/attacker source shown)",
+    "weather/openweathermap fixed-host query params (not SSRF)",
+    "etl extract_from_api(api_url) helper without network-facing caller"
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md:523-568",
+      "title": "Unauthenticated /qto-extract webhook → Execute Command RCE via model_path + arbitrary file write",
+      "description": "BIM QTO n8n workflow triggers on webhook path /qto-extract with no authentication. First step Execute Command interpolates attacker-controlled {{$json.model_path}} into a shell command. Final step Write Binary File uses attacker-controlled {{$json.output_path}}. Distinct from already-known localFileTrigger executeCommand on BIM Change Detection (folder watch), because here the source is a public HTTP webhook.",
+      "impact": "Remote code execution on the n8n host as the n8n process user; arbitrary file write via output_path.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Deploy ifc-qto-extraction n8n Integration as written.\n2. POST /webhook/qto-extract with model_path ending in quote-breakout: C:\\tmp\\x.rvt\" & whoami > C:\\tmp\\qto_rce.txt & rem \"\n3. Execute Command expands to RvtExporter.exe \"...\" & whoami ... → shell runs attacker command.\n4. Optionally set output_path to traverse and overwrite an arbitrary path.",
+      "evidence": [
+        "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md:523-531",
+        "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md:566-568",
+        "security-findings/poc_qto_webhook_rce_2026-11-01.py"
+      ],
+      "remediation": "Require webhook auth (header/HMAC). Never interpolate user input into Execute Command; pass argv-safe fixed converter invocation. Constrain output_path under an allowlisted directory."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md:36-134",
+      "title": "Unauthenticated daily-report-data webhook drives Procore OAuth fetch, email, and SharePoint write",
+      "description": "Webhook Input POST path daily-report-data has no authentication. Python helper posts project_id, project_name, site_lat/lon, and distribution_list. Get Site Photos calls Procore with OAuth using {{$json.project_id}}. Send Email uses toEmail={{$json.distribution_list}}. SharePoint uploads the generated report. Attacker can poison official daily reports and abuse the Procore token; when distribution_list is taken from the webhook payload as the helper + emailSend node indicate, attacker also receives the PDF.",
+      "impact": "Unauthenticated abuse of Procore OAuth credentials; forged/poisoned daily construction reports emailed and stored on SharePoint; possible recipient takeover via distribution_list.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Discover n8n webhook URL /webhook/daily-report-data.\n2. POST project_id of a sensitive Procore project + distribution_list=attacker@evil.\n3. Workflow OAuth-fetches that project's images, builds PDF, emails distribution_list, uploads SharePoint.",
+      "evidence": [
+        "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md:36-41",
+        "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md:64-70",
+        "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md:119-134",
+        "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md:146-156"
+      ],
+      "remediation": "Authenticate webhook; hardcode distribution list from env/credentials; map project_id through an allowlist; do not accept recipient addresses from the request body."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md:27-114",
+      "title": "Unauthenticated photo-upload webhook writes official Airtable Site Photos and burns Anthropic key",
+      "description": "Photo Webhook POST path photo-upload has no authentication, accepts binary/base64 uploads, sends them to Anthropic with company API key, then Airtable create into Site Photos. Scheduled report emails safety issues derived from those rows to PHOTO_REPORT_RECIPIENTS.",
+      "impact": "Anyone who can hit the webhook can insert forged site/safety records into the official photo log and force Anthropic spend; poisoned safety issues appear in stakeholder email reports.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. POST /webhook/photo-upload with attacker image + filename.\n2. Claude Vision analyzes; Parse AI Response builds fields.\n3. Airtable create stores official Site Photos row.\n4. Evening schedule emails safety_issues from those rows.",
+      "evidence": [
+        "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md:27-35",
+        "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md:49-84",
+        "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md:99-114"
+      ],
+      "remediation": "Authenticate webhook; restrict uploads to known field devices/accounts; validate/quarantine before Airtable write."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Field-Automation/telegram-field-bot/SKILL.md:56-236",
+      "title": "Telegram field bot has no user allowlist; arbitrary users create official reports",
+      "description": "n8n workflow Telegram Trigger → PostgreSQL insert with no auth gate. Python Application registers CommandHandler/MessageHandler for all users; handle_photo/handle_text accept any from_user.id and log reports. generate_daily_report SELECTs telegram_reports into the official daily summary. No ALLOWED_USER_IDS / chat allowlist appears in the deployable sample.",
+      "impact": "Anyone who finds the public bot can inject photos/text into official field records and daily summaries.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Discover bot username from BotFather naming pattern / leaked token surface.\n2. Send photo or text report.\n3. n8n inserts into PostgreSQL / Python logs report.\n4. generate_daily_report aggregates into official daily summary.",
+      "evidence": [
+        "3_DDC_Insights/Field-Automation/telegram-field-bot/SKILL.md:62-87",
+        "3_DDC_Insights/Field-Automation/telegram-field-bot/SKILL.md:128-235",
+        "3_DDC_Insights/Field-Automation/telegram-field-bot/SKILL.md:245-274"
+      ],
+      "remediation": "Enforce allowlisted Telegram user IDs / chat IDs before any DB write; require /start invite tokens issued by PMs."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-project-management/SKILL.md:105-221",
+      "title": "Open Telegram /start self-registration as Foreman with no allowlist",
+      "description": "Workflow routes /start. Documented registration asks for name and self-selected role including Прораб (Foreman), then completes registration and stores Telegram ID. Workers sheet Telegram_ID is defined as User ID from /start. No invite code, admin approval, or allowlist is specified. Registered IDs become the roster PMs use for Executor_ID task assignment and official status/photo responses.",
+      "impact": "Attacker joins the official Workers roster as Foreman, enabling assignment of real tasks, receipt of project details, and submission of official completion/photo/GPS records.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. Message bot /start.\n2. Provide name; choose role Прораб.\n3. Bot confirms registration with attacker Telegram ID.\n4. ID appears in Workers; PM assigns Executor_ID; attacker receives tasks and can submit official responses/photos.",
+      "evidence": [
+        "3_DDC_Insights/Automation-Workflows/n8n-project-management/SKILL.md:105-112",
+        "3_DDC_Insights/Automation-Workflows/n8n-project-management/SKILL.md:139-150",
+        "3_DDC_Insights/Automation-Workflows/n8n-project-management/SKILL.md:198-220"
+      ],
+      "remediation": "Disable open /start roster writes; require PM-provisioned invite tokens or pre-seeded allowlisted Telegram IDs before role assignment."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:532-582",
+      "title": "Unauthenticated /rfi-notification webhook emails and Telegrams staff from attacker fields",
+      "description": "Webhook path /rfi-notification has no authentication. Attacker supplies rfi_number, subject, assigned_to, priority, due date. Workflow looks up Contacts by role={{assigned_to}}, then Emails and Telegrams those recipients. Subject is interpolated into the email Subject header (CRLF header-injection risk) and Telegram body.",
+      "impact": "Unauthenticated phishing/spam to project contacts; forged RFI urgency; possible email header injection via subject.",
+      "verified": true,
+      "status": "active",
+      "attack_path": "1. POST /webhook/rfi-notification with assigned_to matching a Contacts role (e.g. Architect) and attacker-controlled subject.\n2. Workflow resolves emails/telegram_ids from Contacts.\n3. Staff receive forged RFI email + Telegram.",
+      "evidence": [
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:534-536",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:539-582"
+      ],
+      "remediation": "Authenticate webhook; strip CRLF from subject; do not let untrusted callers choose assigned_to roles that fan out notifications."
+    }
+  ],
+  "related_medium_notes": [
+    {
+      "note": "voice-to-report Telegram → PostgreSQL Save similarly lacks allowlist (SKILL.md:185-214); same class as telegram-field-bot — counted as corroborating pattern, not a separate distinct root cause beyond field-bot.",
+      "severity_if_filed_separately": "high"
+    },
+    {
+      "note": "multi-agent-estimation unauth Webhook → AI agents → email to fixed estimator@company.com is unauthenticated compute/API abuse but fixed recipient; not filed separately as MEDIUM+ complete high-impact chain.",
+      "severity_if_filed_separately": "medium"
+    }
+  ],
+  "poc": [
+    "security-findings/poc_qto_webhook_rce_2026-11-01.py",
+    "security-findings/poc_n8n_telegram_auth_gaps_2026-11-01.py"
+  ],
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_injection-auth-hunt-2026-11-01.json",
+  "slack": "SendSlackMessage tool unavailable in this run"
+}
