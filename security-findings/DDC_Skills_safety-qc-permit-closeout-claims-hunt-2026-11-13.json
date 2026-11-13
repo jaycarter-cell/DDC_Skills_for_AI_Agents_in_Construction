@@ -1,0 +1,118 @@
+{
+  "hunt": "safety-qc-permit-closeout-claims-business-logic-2026-11-13",
+  "date": "2026-11-13",
+  "bcId": "bc-f7842f70-6b02-59b9-a567-e1eefb76dd0c",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "main",
+  "run": "https://cursor.com/agents/bc-f7842f70-6b02-59b9-a567-e1eefb76dd0c",
+  "scope": [
+    "3_DDC_Insights/Safety-Quality/safety-inspection-checklist",
+    "3_DDC_Insights/Safety-Quality/incident-reporting",
+    "3_DDC_Insights/Safety-Quality/quality-control-workflow",
+    "3_DDC_Insights/Safety-Quality/compliance-tracker",
+    "3_DDC_Insights/Safety-Quality/toolbox-talk-generator",
+    "5_DDC_Innovative/permit-tracking-automation",
+    "5_DDC_Innovative/safety-compliance-checker",
+    "1_DDC_Toolkit/Closeout/warranty-tracker",
+    "1_DDC_Toolkit/Closeout/as-built-tracker",
+    "1_DDC_Toolkit/Project-Closeout/project-closeout-checklist",
+    "4_DDC_Curated/Contract-Legal/claims-documentation"
+  ],
+  "result": "1 CRITICAL + 1 HIGH",
+  "poc": "security-findings/poc_safety_qc_permit_closeout_claims_hunt_2026-11-13.py",
+  "poc_result": "ALL_POCS_PASSED",
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md",
+      "title": "submit_claim and record_settlement skip notice/evidence gates; late notices still mark notice_compliant; DRAFT→SETTLED forges award amounts",
+      "description": "ClaimsDocumentor documents Notice → Document → Quantify → Submit → Negotiate and maintains notice_compliant plus check_notice_deadlines(), but submit_claim() only sets ClaimStatus.SUBMITTED with no check of notice_compliant, overdue notices, evidence, narrative, or damage support. record_notice_sent() sets notice_compliant = all(n.sent) without comparing sent_date to event_date+deadline_days, so overdue contractual notices still flip notice_compliant True. record_settlement() writes SETTLED, time_awarded_days, and amount_awarded from any prior status including DRAFT with no UNDER_REVIEW/approval gate. calculate_delay_damages()/add_damage_calculation() accept unbounded daily_rate/amount that feed cost_claimed. Distinct from already-reported schedule-delay EOT forge and warranty update_claim_status APPROVED.",
+      "impact": "A contractor/agent can mint a multi-million SETTLED claim award (PoC: $4.635M delay package submitted with notice_compliant=False; $1M DRAFT→SETTLED; late differing-conditions notices still notice_compliant=True) used as the live claims register for recovery/payment negotiation—claim inflation and preservation of contractually forfeited notice rights.",
+      "attack_path": [
+        "1. Operator deploys ClaimsDocumentor from this skill as the project claims system of record.",
+        "2. Attacker create_claim(DELAY) then calculate_delay_damages(delay_days=90, daily_rate=50000) with no notices sent (notice_compliant remains False).",
+        "3. Attacker submit_claim(claim_id) → SUBMITTED despite overdue/unsent Intent to Claim and Detailed Claim notices.",
+        "4. Optionally record_settlement(claim_id, 90, cost_claimed) or, on a fresh DRAFT claim, record_settlement directly with amount_awarded=1000000 → SETTLED.",
+        "5. Alternate path: after deadlines expire, record_notice_sent for each type → notice_compliant True; submit_claim proceeds as if timely."
+      ],
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:15-26",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:120-122",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:193-215",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:217-238",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:266-328",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:337-344",
+        "4_DDC_Curated/Contract-Legal/claims-documentation/SKILL.md:346-359"
+      ],
+      "remediation": "Block submit_claim unless notice_compliant and every notice sent_date <= deadline; require authenticated evidence and non-empty narrative/damages. Allow record_settlement only from UNDER_REVIEW/NEGOTIATING with dual-control approver. Cap damage inputs; surface overdue notices as hard failures, not advisory rows.",
+      "verified": true
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md",
+      "title": "review_submission(approved=True) stamps APPROVED from NOT_STARTED with empty file_path and no submission record",
+      "description": "AsBuiltTracker.review_submission() is the production approval path for handover drawings. It never requires DocumentStatus.SUBMITTED, a prior DocumentSubmission, non-empty file_path, or revision evidence. Calling review_submission(doc_id, approved=True, ...) on a NOT_STARTED document with file_path=\"\" sets status=APPROVED and approved_date. get_summary() then reports completion_rate=100 and approved counts used for handover readiness. Distinct from already-reported Innovative as-built-documentation empty-FINAL completeness forge (different skill/API).",
+      "impact": "Handover/closeout can show 100% as-built approval with zero drawings on file. Occupancy, final payment, and O&M turnover proceed on a false documentation-complete signal; missing as-builts create safety/operations liability.",
+      "attack_path": [
+        "1. Operator deploys AsBuiltTracker as the as-built register (Quick Start / get_summary / export_to_excel).",
+        "2. Documents are seeded via add_document (status NOT_STARTED, file_path empty).",
+        "3. Attacker (colluding PM/contractor) calls review_submission(document_id, approved=True, reviewer='PM') without record_submission.",
+        "4. Document becomes APPROVED; get_summary().completion_rate reaches 100% with submitted_date still None and no file.",
+        "5. Export/transmittal/handover package treats the register as complete."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:54-69",
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:140-169",
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:171-197",
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:199-235"
+      ],
+      "remediation": "Allow review_submission only when status is SUBMITTED/UNDER_REVIEW and the latest submission has a non-empty file_path. Reject approve when no DocumentSubmission exists. Keep completion_rate based on verified files, not reviewer string alone.",
+      "verified": true
+    }
+  ],
+  "near_misses_discarded": [
+    {
+      "item": "quality-control-workflow hold_point never read; conduct_inspection can re-PASS with open CRITICAL and empty sign_off_by",
+      "reason": "Explicitly discarded in prior hunts (flagged-48/50): hold_point stored but framed as missing control / already covered by QC Pass + NCR auto-ACCEPT+verify (PR2/PR6). Not re-filed."
+    },
+    {
+      "item": "quality-control-workflow record_ncr_response → ACCEPTED; verify_remediation closes defects",
+      "reason": "Already reported HIGH in PR2 (flagged-15) and negative cost_impact in insights hunt."
+    },
+    {
+      "item": "permit-tracking-automation update_status DRAFT→ISSUED; check_permit_status is_valid ignores missing docs; inspection without ISSUED",
+      "reason": "Already reported across PR4/PR7/PR11/PR14. Not re-filed."
+    },
+    {
+      "item": "safety-compliance-checker fall-protection any(); unused excav/scaffold/elec rules; hot-work case fold",
+      "reason": "Already reported PR4/PR7/PR15. Not re-filed."
+    },
+    {
+      "item": "safety-inspection-checklist critical ChecklistItem flag unused / signed_off dead / caller severity",
+      "reason": "Discarded in flagged-50 as advisory metrics with no work-clearance boolean. Pass-forge already reported."
+    },
+    {
+      "item": "incident-reporting NEAR_MISS underclassification + CA self-complete; no close_incident CAPA gate",
+      "reason": "Underclassification/self-complete already reported (PR12). CLOSED enum exists but no named close API to misuse—incomplete control, not fail-open authorize."
+    },
+    {
+      "item": "compliance-tracker update_status ACTIVE on CRITICAL permits without docs",
+      "reason": "Discarded flagged-50: critical_missing is reporting only; no is_valid/can_start (unlike permit is_valid)."
+    },
+    {
+      "item": "toolbox-talk-generator record_talk attacker-supplied attendees",
+      "reason": "Already reported HIGH in PR13."
+    },
+    {
+      "item": "warranty-tracker update_claim_status APPROVED + file_claim pre-start issue_date + expiring window",
+      "reason": "Already reported PR2/PR6/PR11. Not re-filed."
+    },
+    {
+      "item": "project-closeout-checklist update_status COMPLETE on Certificate of Occupancy while Final building inspection NOT_STARTED; forge 100%",
+      "reason": "Checklist tracking without can_occupy/issue_co authorizing boolean—same class as compliance ACTIVE soft near-miss. Marking items complete is the tracker’s purpose; no hard occupancy gate API."
+    }
+  ],
+  "slack": "SendSlackMessage tool unavailable in this run",
+  "open_git_pr": "OpenGitPr tool unavailable; findings committed on main per cloud branch instructions"
+}
