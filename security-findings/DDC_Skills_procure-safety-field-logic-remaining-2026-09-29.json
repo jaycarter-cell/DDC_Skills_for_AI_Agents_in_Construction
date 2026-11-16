@@ -1,0 +1,121 @@
+{
+  "hunt": "procurement-safety-quality-field-closeout-logic-remaining",
+  "date": "2026-09-29",
+  "repo": "DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-finding-memory-a488",
+  "run": "https://cursor.com/agents/bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+  "result": "1 CRITICAL + 4 HIGH validated findings",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_procure-safety-field-logic-remaining-2026-09-29.json",
+  "poc_artifact": "/opt/cursor/artifacts/poc_procure_safety_field_logic_2026-09-29.py",
+  "poc_result": "5 passed, 0 failed",
+  "skipped_already_reported": [
+    "material-tracker create_order overwrite / consume negative / DRAFT→DELIVERED",
+    "subcontractor EMR/docs ignored + unbounded scores",
+    "bid-analysis unbounded scores (advisory)",
+    "warranty get_expiring_warranties empty window",
+    "as-built APPROVED from NOT_STARTED",
+    "submittal APPROVED from DRAFT",
+    "Field punch OPEN→ACCEPTED; Field safety TRIR osha_recordable",
+    "compliance ACTIVE/NA; inspection NA 100%; incident TRIR misclass",
+    "QC hold_point empty PASS / NCR auto-ACCEPTED",
+    "safety-compliance fall any() / unused OSHA rules / forged responses",
+    "permit is_valid docs/expiry / update_status forge ISSUED",
+    "IoT storage substring / MQTT unauth / geofence invert",
+    "telegram/voice allowlist; n8n webhooks; generic local missing-auth"
+  ],
+  "near_misses_rejected": [
+    "permit unpaid fees on ISSUED — subsumed by already-reported update_status forge ISSUED",
+    "RFI DRAFT→CLOSED alone — prior process-gap reject; filed only impact-forge chain",
+    "DeadlineMonitor == thresholds; daily-report ReportLab XML"
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md",
+      "title": "acceptance_criteria never evaluated — out-of-spec measurements stamp PASSED",
+      "description": "conduct_inspection() sets QCStatus.PASSED solely from caller result=='pass'. InspectionPoint.acceptance_criteria is stored on the ITP but never compared to measurements. Distinct from already-reported hold_point empty-evidence PASS and NCR auto-ACCEPTED: even when measurements explicitly violate the published criteria (e.g. slump 12 in vs 4–6 in), the inspection still PASSED.",
+      "impact": "Structural/ITP inspections used as pour gates can authorize out-of-spec concrete or cover checks as PASSED. Defective structural work proceeds under an official QC stamp.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+      "detected_at_pst": "2026-09-29T02:26:00-07:00",
+      "attack_path": "1. Agent runs QualityControlManager with create_itp criteria 'Slump 4-6 inches' as the pour gate.\n2. Attacker/colluding inspector schedule_inspection then conduct_inspection(result='pass', measurements={'slump_inches': 12.0}).\n3. acceptance_criteria is never read; status=PASSED.\n4. get_quality_metrics first_time_pass_rate rises; pour proceeds.",
+      "evidence": [
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:63-70",
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:165-179",
+        "3_DDC_Insights/Safety-Quality/quality-control-workflow/SKILL.md:357-359"
+      ],
+      "remediation": "Bound-check measurements against acceptance_criteria before PASSED. Fail closed when required keys are missing or out of range. Do not trust free-form result='pass' alone."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md",
+      "title": "update_status forges DELIVERED with qty_received=0; empty-item receive is vacuous DELIVERED",
+      "description": "update_status() assigns any DeliveryStatus including DELIVERED with no transition checks and without setting quantity_received. Overdue CRITICAL deliveries disappear from get_delayed_deliveries(). Separately, receive_delivery() uses all(item.is_complete...); with items=[] this is vacuously True so a zero-item delivery stamps DELIVERED. received_quantities are also written unbounded vs quantity_ordered. Distinct from material-tracker DRAFT→DELIVERED (different skill).",
+      "impact": "Official logistics/OTD reports clear overdue structural deliveries and stamp PO fulfillment complete with zero (or forged) received tons — schedule and vendor-performance fraud feeding make-ready and pay apps.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+      "detected_at_pst": "2026-09-29T02:26:00-07:00",
+      "attack_path": "1. Agent uses MaterialDeliveryTracker as live delivery/OTD system of record.\n2. CRITICAL steel delivery is 10 days overdue with 500 TON still quantity_received=0.\n3. Attacker update_status(..., DELIVERED) OR receive_delivery on a no-item delivery.\n4. get_delayed_deliveries() returns []; status=delivered while stock/receipts never occurred.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:196-211",
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:213-239",
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:264-269"
+      ],
+      "remediation": "Allow DELIVERED only via receive_delivery after items exist and quantities are recorded. Reject vacuous all([]). Cap received qty; enforce transitions."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md",
+      "title": "record_delivery condition=damaged still increments usable inventory",
+      "description": "record_delivery accepts condition ('good','damaged','partial') but always adds quantity to inventory.current_stock and advances delivered_qty/status regardless of condition. Distinct from already-reported negative consume_material inflation and order_id overwrite.",
+      "impact": "Damaged structural steel/concrete is counted as on-hand usable stock. Consumption planning treats scrap as available — risk of installing damaged material or hiding true stockouts.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+      "detected_at_pst": "2026-09-29T02:26:00-07:00",
+      "attack_path": "1. Agent uses MaterialTracker inventory as the live stock ledger.\n2. Colluding receiver record_delivery(order, qty=50, condition='damaged') on STEEL with stock=100.\n3. current_stock becomes 150; order status DELIVERED.\n4. get_low_stock_items / consume_material treat damaged tons as usable.",
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md:83-90",
+        "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md:140-179"
+      ],
+      "remediation": "Do not add damaged/rejected quantities to usable current_stock. Quarantine damaged qty; only accepted condition increments available stock."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md",
+      "title": "file_claim accepts issue_date before warranty start",
+      "description": "file_claim only rejects WarrantyStatus.EXPIRED. It never checks that issue_date is within [start_date, end_date]. A currently ACTIVE warranty accepts a claim whose issue_date is hundreds of days before coverage began. Distinct from already-reported get_expiring_warranties empty-window alert bug.",
+      "impact": "Official warranty register can open manufacturer/contractor claims for pre-existing damage outside the coverage period — fraudulent recoveries and closeout liability transfers.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+      "detected_at_pst": "2026-09-29T02:26:00-07:00",
+      "attack_path": "1. Agent uses WarrantyTracker as the handover warranty/claims system of record.\n2. HVAC warranty start=2024-06-01 is ACTIVE today.\n3. Attacker file_claim(..., issue_date=start-400 days) for pre-existing compressor failure.\n4. Claim stored with no coverage-window error.",
+      "evidence": [
+        "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md:113-122",
+        "1_DDC_Toolkit/Closeout/warranty-tracker/SKILL.md:238-267"
+      ],
+      "remediation": "Require start_date <= issue_date <= end_date. Reject VOID/EXPIRED. Record coverage decision before SUBMITTED."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md",
+      "title": "respond_to_rfi has no status gate and trusts unbounded cost_amount/schedule_days",
+      "description": "respond_to_rfi() does not require status==OPEN (DRAFT acceptable), then writes caller cost_amount and schedule_days into the RFI and flips status to ANSWERED. get_statistics()/generate_report() sum those fields as official impact. Distinct from the separate unauthenticated /rfi-notification webhook alert-forgery finding.",
+      "impact": "Colluding responders can publish $5M / 365-day RFI impact on a never-submitted DRAFT, poisoning delay claims, change-order forecasts, and owner reports.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-957f7197-d1f5-519d-99c7-8867c4ef7ed6",
+      "detected_at_pst": "2026-09-29T02:26:00-07:00",
+      "attack_path": "1. Agent uses RFIManager as the live RFI log and impact dashboard.\n2. Attacker create_rfi leaves status DRAFT (never submit_rfi).\n3. respond_to_rfi(..., cost_impact=True, cost_amount=5e6, schedule_impact=True, schedule_days=365).\n4. get_statistics() total_cost_impact=$5M, total_schedule_days=365; generate_report publishes it.",
+      "evidence": [
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:300-334",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:394-407",
+        "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md:455-460"
+      ],
+      "remediation": "Allow respond only when status is OPEN/PENDING. Cap cost_amount/schedule_days; exclude DRAFT from impact totals."
+    }
+  ]
+}
