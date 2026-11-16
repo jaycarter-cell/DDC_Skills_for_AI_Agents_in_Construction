@@ -1,0 +1,248 @@
+{
+  "hunt": "schedule-resource-logistics-logic-flaws",
+  "date": "2026-09-25",
+  "run": "https://cursor.com/agents/bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+  "branch": "cursor/vulnerability-findings-workflow-50e4",
+  "commit_hash": "34e0d78",
+  "result": "1 CRITICAL + 7 HIGH validated findings",
+  "skipped_already_reported": [
+    "equipment-fleet-manager double-book",
+    "daily-progress auto-COMPLETED",
+    "forged EOT via on_critical_path",
+    "warranty get_expiring_warranties empty window (ACTIVE vs EXPIRING_SOON)",
+    "prefab empty required_modules",
+    "crane assignment ignores capacity",
+    "SNOW never triggers precip holds",
+    "look-ahead out-of-window predecessors",
+    "schedule-compression phantom fast-track/crash reduction",
+    "resource-leveler max-not-sum / pred-ignorant shift",
+    "labor-allocation overlap warning-only",
+    "4d-simulation missing pred skip",
+    "bim-to-schedule predecessors unused",
+    "capacity-planning FTE/win_prob",
+    "resource-allocation is_critical skip"
+  ],
+  "near_misses": [
+    {
+      "location": "3_DDC_Insights/Schedule-Optimization/schedule-compression/SKILL.md",
+      "note": "Fast-track accepts overlapping concrete-cure hold with risk_level=low — same root as already-reported phantom overlap subtraction; not refiled."
+    },
+    {
+      "location": "5_DDC_Innovative/capacity-planning/SKILL.md",
+      "note": "PHASE_FACTORS key uses role.value.split('_')[0][:3] ('pro'/'sup'/'saf') which never matches 'pm'/'super'/'safety' — related to prior FTE filing."
+    },
+    {
+      "location": "1_DDC_Toolkit/Project-Closeout/project-closeout-checklist/SKILL.md",
+      "note": "update_status(COMPLETE) on Certificate of Occupancy with no evidence — same evidence-free stamp pattern as punch-list VERIFIED; covered by punch finding."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "1_DDC_Toolkit/Project-Closeout/punch-list-manager/SKILL.md",
+      "title": "update_status can forge VERIFIED with empty verified_by → forecast stamps COMPLETE while life-safety defects never fixed",
+      "description": "PunchListManager.update_status accepts any PunchItemStatus with no workflow gate, photo/evidence check, or required verified_by. An OPEN CRITICAL firestopping item can jump straight to VERIFIED with verified_by=''. get_summary then reports completion_rate=100, open_items=0, overdue_count=0 (COMPLETED/VERIFIED excluded from overdue). forecast_completion returns status=COMPLETE, on_track=True. Distinct from daily-progress auto-COMPLETED and from warranty empty-window.",
+      "impact": "Official closeout forecast declares the project COMPLETE while open life-safety / code punch items were never corrected — occupancy handover with unverified firestopping, structural, or egress defects.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Agent runs punch-list-manager as the closeout gate for substantial completion / CO.",
+        "2. CRITICAL firestopping (or similar) items exist as OPEN / overdue.",
+        "3. Attacker or misconfigured agent calls update_status(item_id, VERIFIED, verified_by='') with no repair, photo, or inspector identity.",
+        "4. forecast_completion() returns status=COMPLETE, on_track=True; overdue_count=0 — handover proceeds."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Project-Closeout/punch-list-manager/SKILL.md:138-154",
+        "1_DDC_Toolkit/Project-Closeout/punch-list-manager/SKILL.md:187-235",
+        "1_DDC_Toolkit/Project-Closeout/punch-list-manager/SKILL.md:280-316"
+      ],
+      "remediation": "Enforce OPEN→IN_PROGRESS→COMPLETED→VERIFIED transitions. Require non-empty verified_by and evidence/photo for VERIFIED. Keep COMPLETED items in overdue/assignee backlog until VERIFIED. forecast_completion must require zero non-VERIFIED CRITICAL/FIRE_PROTECTION items.",
+      "poc": "PL-0001 CRITICAL firestopping OPEN overdue → update_status(VERIFIED, '') → completion_rate=100, forecast COMPLETE on_track=True, overdue=0."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md",
+      "title": "review_submission approves NOT_STARTED docs with zero submissions — handover shows 100% as-built complete",
+      "description": "review_submission(approved=True) never checks DocumentStatus.SUBMITTED, never requires a DocumentSubmission row, and never checks file_path. A document created as NOT_STARTED can be stamped APPROVED immediately. get_summary then reports completion_rate=100 with submissions=[]. Distinct from punch VERIFIED forge (different skill/artifact).",
+      "impact": "Handover / O&M package reports full as-built approval without any record drawings filed — concealed field deviations, wrong fire-rating assemblies, and unverifiable installed conditions.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Agent uses as-built-tracker for closeout completeness.",
+        "2. Required structural/FP as-builts are added (NOT_STARTED).",
+        "3. review_submission(doc_id, approved=True) is called with no record_submission.",
+        "4. get_summary() shows completion_rate=100, approved=N — handover stamped complete."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:171-197",
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:109-120",
+        "1_DDC_Toolkit/Closeout/as-built-tracker/SKILL.md:223-235"
+      ],
+      "remediation": "Only allow APPROVED from SUBMITTED/UNDER_REVIEW. Require at least one submission with non-empty file_path. Reject approve when status is NOT_STARTED.",
+      "poc": "add_document → review_submission(approved=True) with submissions=0 → status=approved, completion_rate=100.0."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "title": "generate_weekly_plan schedules blocked activities (incomplete preds / open inspection holds)",
+      "description": "analyze_make_ready correctly marks STEEL blocked when FOUNDATION is incomplete or an INSPECTION constraint is open (can_start=False). generate_daily_plan respects can_start, but generate_weekly_plan includes every activity whose dates overlap the week — ignoring can_start, predecessors, and open constraints. Weekly labor hours still sum blocked steel. Distinct from already-reported out-of-window predecessor all([]) bypass.",
+      "impact": "The 1-week work plan crews actually pull from authorizes steel erection / other successors before foundations and special inspections are clear — sequence and hold-point skip.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Import FOUND (incomplete) and STEEL (pred=FOUND) plus open INSPECTION hold on STEEL.",
+        "2. analyze_make_ready → STEEL blocked, can_start=False.",
+        "3. generate_weekly_plan(week_start) still lists STEEL and adds its labor_hours.",
+        "4. Field coordination runs the weekly plan — steel crews mobilized before foundation/inspection."
+      ],
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:226-256",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:199-218",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:258-265"
+      ],
+      "remediation": "Filter weekly plan to can_start==True (or re-run make-ready and exclude blocked/not_ready). Surface blocked activities in a separate constraints section only.",
+      "poc": "STEEL blocked by FOUND+INSPECTION; weekly=['FOUND','STEEL'] hours=200; daily correctly omits STEEL."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "title": "update_constraint forges INSPECTION/PERMIT RESOLVED with notes-only → steel Ready on daily plan",
+      "description": "update_constraint(constraint_id, RESOLVED, notes=...) sets resolved_date with no AHJ sign-off, permit number, or inspection certificate check. analyze_make_ready treats status==RESOLVED as sufficient for make-ready. Combined with empty predecessors (or the weekly bypass), steel moves to ready and generate_daily_plan assigns ironworker crews. Distinct from weekly-plan date filter bug and from out-of-window preds.",
+      "impact": "Mandatory special-inspection / permit hold points cleared by a string note — erection proceeds without AHJ release.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. STEEL has open ConstraintType.INSPECTION hold — analyze_make_ready → not_ready.",
+        "2. Attacker calls update_constraint(id, RESOLVED, notes='forged clear').",
+        "3. analyze_make_ready → ready=['STEEL'].",
+        "4. generate_daily_plan assigns STEEL with labor_by_trade ironworker crew."
+      ],
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:178-191",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:206-218",
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:258-265"
+      ],
+      "remediation": "For INSPECTION/PERMIT constraints require structured evidence (inspector id, certificate ref, timestamp) before RESOLVED. Fail closed if missing.",
+      "poc": "INSPECTION open → not_ready; update_constraint(RESOLVED,'forged clear') → ready=['STEEL']; daily=['STEEL'] ironworker=6."
+    },
+    {
+      "severity": "high",
+      "location": "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md",
+      "title": "generate_daily_plan sums crew_size with no trade capacity — 50 ironworkers scheduled",
+      "description": "Daily plan includes every can_start activity in the date window and labor_by_trade[trade] += crew_size with no comparison to available crew, union hall limits, or site density caps. Five concurrent ready steel picks each crew_size=10 produce ironworker=50 on the official daily coordination plan. Distinct from weekly make-ready bypass and from Toolkit labor-allocation overlap warning-only.",
+      "impact": "Look-ahead daily plan over-allocates trade labor — overcrowding, fall-protection gaps, and unsafe concurrent steel picks presented as coordinated.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Import five same-day STEEL picks, each crew_size=10, no preds/constraints.",
+        "2. analyze_make_ready marks all ready.",
+        "3. generate_daily_plan sums labor_by_trade['ironworker']=50.",
+        "4. Coordination issues the daily plan with all five picks — over-allocated crews."
+      ],
+      "evidence": [
+        "3_DDC_Insights/Schedule-Optimization/look-ahead-scheduler/SKILL.md:258-296"
+      ],
+      "remediation": "Accept trade capacity limits; reject or split activities when labor_by_trade exceeds capacity; surface shortages instead of silently scheduling.",
+      "poc": "5× steel crew_size=10 same day → daily labor_by_trade ironworker=50."
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+      "title": "StorageOptimizer treats zone.restrictions as soft -100 penalty and never persists current_usage — hazmat into restricted zone + silent overfill",
+      "description": "allocate_storage scores restricted material types with score -= 100 but still selects the zone if it is the only capacity fit (or still highest score). zone.current_usage is never written after allocation — only a local zone_usage dict — so get_storage_utilization always shows used=0 and a subsequent allocate_storage call re-fills from empty, exceeding capacity. Distinct from already-reported crane capacity ignore in _find_available_crane.",
+      "impact": "Flammable/hazmat staged in restricted storage and physical overfill of storage pads — fire/explosion and collapse risk on the official logistics allocator.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. STOR1 capacity=100 with restrictions=['flammable']; STOR2 capacity=20 unrestricted far away.",
+        "2. allocate_storage flammable qty=30/40 near pad → both assigned STOR1 despite restriction.",
+        "3. get_storage_utilization still used=0 for STOR1.",
+        "4. Second allocate_storage of steel qty=90 also fits STOR1 — reported capacity silently exceeded."
+      ],
+      "evidence": [
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:392-421",
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:425-451",
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:453-466"
+      ],
+      "remediation": "Hard-reject when material_type ∈ zone.restrictions. Persist zone.current_usage (and assignments) after every allocation. Fail closed when no safe zone remains.",
+      "poc": "flammable→STOR1 (restricted); util used=0; second steel 90→STOR1 overfill."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Schedule-Integration/weather-impact-scheduler/SKILL.md",
+      "title": "Default max_wind=50 km/h so CLEAR 45 km/h tower-crane days produce zero wind holds",
+      "description": "ScheduleActivity.max_wind defaults to 50.0 and add_activity never exposes a wind override. _check_impact only holds when wind_speed_kmh > activity.max_wind. A HIGH-sensitivity outdoor crane pick on a CLEAR 45 km/h day yields impacts=[]. The same day at 55 km/h yields 8 delay hours. Distinct from already-reported SNOW precip-branch miss (condition enum gap); this is the default wind threshold too high for crane/steel gates.",
+      "impact": "Weather-hold calendar authorizes tower-crane picks in sustained high wind below 50 km/h — struck-by / load-swing / collapse risk the hold list was meant to catch.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Agent builds pour/crane weather holds via weather-impact-scheduler.",
+        "2. add_activity for tower-crane pick uses defaults (max_wind=50).",
+        "3. Forecast CLEAR with wind_speed_kmh=45.",
+        "4. analyze_impacts()/get_total_delay_forecast() → 0 hours; crews hoist."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Schedule-Integration/weather-impact-scheduler/SKILL.md:47-57",
+        "1_DDC_Toolkit/Schedule-Integration/weather-impact-scheduler/SKILL.md:76-88",
+        "1_DDC_Toolkit/Schedule-Integration/weather-impact-scheduler/SKILL.md:146-149"
+      ],
+      "remediation": "Default max_wind to crane-safe thresholds (e.g. 30–35 km/h for HIGH outdoor). Let add_activity set max_wind. Auto-apply lower caps for crane/steel activity names.",
+      "poc": "HIGH outdoor crane, CLEAR 45 km/h → impacts=[]; identical 55 km/h → 8h High wind."
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md",
+      "title": "return_equipment always sets AVAILABLE and ignores overdue next_maintenance_hours",
+      "description": "return_equipment increments current_hours and unconditionally sets status=AVAILABLE. It never compares current_hours to next_maintenance_hours, and schedule_maintenance never flips status to MAINTENANCE. get_available_equipment therefore returns a crane 600h past a 500h service interval. Distinct from already-reported assign_equipment double-book while IN_USE.",
+      "impact": "Fleet availability API releases overdue-maintenance tower cranes / excavators to new projects — mechanical failure and drop risk.",
+      "verified": true,
+      "status": "active",
+      "background_composer_id": "bc-8c0518a8-d198-55a4-9b4c-fdd88a3f3c36",
+      "commit_hash": "34e0d78",
+      "detected_at_pst": "2026-09-25T02:31:51-0700",
+      "reported_link": "",
+      "attack_path": [
+        "1. Fleet manager is the source of available cranes for assignment.",
+        "2. Crane with next_maintenance_hours=500 is assigned then return_equipment(hours_used=600).",
+        "3. status=AVAILABLE, current_hours=600 > due.",
+        "4. get_available_equipment() returns the overdue crane for the next job."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:127-133",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:70-74",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:144-149",
+        "1_DDC_Toolkit/Resource-Management/equipment-fleet-manager/SKILL.md:135-142"
+      ],
+      "remediation": "On return, if current_hours >= next_maintenance_hours set MAINTENANCE and exclude from get_available_equipment. schedule_maintenance must lock status. Block assign_equipment when maintenance overdue.",
+      "poc": "crane next_maint=500; return 600h → status=available; appears in get_available_equipment()."
+    }
+  ]
+}
