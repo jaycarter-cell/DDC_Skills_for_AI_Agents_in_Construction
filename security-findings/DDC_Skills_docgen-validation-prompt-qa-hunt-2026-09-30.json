@@ -1,0 +1,115 @@
+{
+  "hunt": "Document-Generation / Data-Validation / Prompt-Engineering / Quality-Assurance HIGH/CRITICAL complete-chain review",
+  "date": "2026-09-30",
+  "branch": "cursor/at-rest-security-review-eb57",
+  "run": "https://cursor.com/agents/bc-b8e10833-2906-569e-b710-a83fa1b3049f",
+  "scope": [
+    "4_DDC_Curated/Document-Generation/",
+    "4_DDC_Curated/Data-Validation/",
+    "4_DDC_Curated/Prompt-Engineering/",
+    "4_DDC_Curated/Quality-Assurance/ (except security-review-construction)"
+  ],
+  "focus": [
+    "Excel formula injection",
+    "email header injection",
+    "path traversal",
+    "SSTI",
+    "unauthenticated APIs",
+    "pickle/deserialization",
+    "SSRF",
+    "command injection",
+    "mass assignment",
+    "missing auth on state-changing operations"
+  ],
+  "result": "NONE",
+  "findings": [],
+  "skipped_already_reported": [
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md",
+      "title": "Arbitrary file read with email-based data exfiltration via unvalidated attachment paths",
+      "ref": "main flagged-vulnerabilities.json / bc-8a082dbf (2026-07-02)"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Prompt-Engineering/prompt-templates/SKILL.md",
+      "title": "Systemic prompt injection via ConstructionPromptLibrary Template.safe_substitute",
+      "ref": "main flagged-vulnerabilities.json / bc-8a082dbf (2026-07-02)"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Prompt-Engineering/few-shot-examples/SKILL.md",
+      "title": "Prompt injection via unsanitized user-supplied few-shot examples",
+      "ref": "security-findings.json @ 3facfba"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Quality-Assurance/continuous-learning/SKILL.md",
+      "title": "Persistent knowledge base poisoning via unvalidated session patterns/code snippets",
+      "ref": "main flagged-vulnerabilities.json / bc-8a082dbf (2026-07-02)"
+    },
+    {
+      "severity": "medium",
+      "location": "generic Excel formula injection class",
+      "title": "Excel formula injection via unsanitized user data written to spreadsheet cells across multiple tools",
+      "ref": "security-findings.json @ 80c6d67 (daily-progress-report + meeting-minutes etc.)"
+    }
+  ],
+  "near_misses": [
+    {
+      "item": "xlsx-construction create_schedule_tracker / process_qto_from_bim formula injection",
+      "location": "4_DDC_Curated/Document-Generation/xlsx-construction/SKILL.md:120-134,201-202",
+      "why": "task.get('name'|'status'|...) and BIM Category/Type are written raw into openpyxl/pandas cells. Classic '=HYPERLINK'/DDE formula injection when a victim opens the workbook. Same already-reported MEDIUM generic class (80c6d67); user bar excludes re-filing generic Excel formula injection. No server-side formula execution."
+    },
+    {
+      "item": "email-construction Subject/Cc CRLF header injection",
+      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md:39,419-423",
+      "why": "Subject/Cc built from RFI fields and assigned to msg['Subject']/msg['Cc'] without sanitization. On current Python email package, CRLF payloads raise HeaderParseError (verified locally) — no successful embedded Bcc/header. Encoded-word variants stay in Subject, not decoded into extra headers by smtplib path shown."
+    },
+    {
+      "item": "email-construction attachment open()+SMTP exfil (+ cc_list retarget)",
+      "location": "4_DDC_Curated/Document-Generation/email-construction/SKILL.md:72-76,431-444",
+      "why": "Complete chain (attachments → open() → MIMEApplication → sendmail; cc_list added to recipients) revalidated with local PoC (CHAIN_OK). ALREADY REPORTED HIGH — skipped."
+    },
+    {
+      "item": "pdf-construction split_drawing_package sheet_name path write",
+      "location": "4_DDC_Curated/Document-Generation/pdf-construction/SKILL.md:132-140",
+      "why": "sheet_name comes from PDF text but regex ([A-Z]+[-]?\\d+) cannot introduce ../ or absolute paths. No traversal chain."
+    },
+    {
+      "item": "pdf-construction extract_rfi_data → RFI_Log.xlsx formula injection",
+      "location": "4_DDC_Curated/Document-Generation/pdf-construction/SKILL.md:29-40,149-164",
+      "why": "Crafted PDF Subject/From could become formula-prefixed Excel cells via the integration snippet. Same generic formula-injection class already reported; no new HIGH/CRITICAL mechanism."
+    },
+    {
+      "item": "docx/pptx photo['path'] local file inclusion",
+      "location": "docx-construction/SKILL.md:165-168; pptx-construction/SKILL.md:170-172",
+      "why": "add_picture / shapes.add_picture only accept image formats — cannot exfiltrate /etc/passwd or .env. Path is operator/session-supplied; similar photo-path class already filed elsewhere at MEDIUM. No HIGH end-to-end secret exfil."
+    },
+    {
+      "item": "schema-validation @app.post('/api/estimates') missing auth + silent extra fields",
+      "location": "4_DDC_Curated/Data-Validation/schema-validation/SKILL.md:145-149,612-620",
+      "why": "Illustrative Flask snippet; app object never created/bound. Extra keys not stripped before process_estimate(payload), but process_estimate is undefined stub — incomplete mass-assignment/unauth chain. Same discard class as flagged-21."
+    },
+    {
+      "item": "prompt-templates string.Template / few-shot format_for_prompt",
+      "location": "prompt-templates/SKILL.md:34-48; few-shot-examples/SKILL.md:51-64",
+      "why": "Uses string.Template.safe_substitute (not Jinja2) — no SSTI/expression eval. Prompt-injection impact of undelimited substitution already reported HIGH for both skills — not re-filed."
+    },
+    {
+      "item": "input-validation / verification-loop-construction",
+      "location": "Data-Validation/input-validation; Quality-Assurance/verification-loop-construction",
+      "why": "Validators and checklists only; no network listeners, shell, pickle, path open of untrusted input, or state-mutating sinks with attacker reach."
+    },
+    {
+      "item": "continuous-learning learn_from_session KB write",
+      "location": "Quality-Assurance/continuous-learning/SKILL.md:185-209,317-335",
+      "why": "Pattern/code_snippet persistence poisoning already reported HIGH — skipped."
+    }
+  ],
+  "poc_notes": [
+    "email Subject/Cc CRLF → HeaderParseError on Python email MIMEMultipart assignment",
+    "email attachment absolute path + attacker cc_list → CHAIN_OK (already reported)",
+    "No pickle/subprocess/shell=True/requests URL/SSRF sinks in in-scope SKILL.md product code"
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "hunt": "HIGH/CRITICAL injection/SSRF/RCE/unauth-webhook complete-chain review",
+  "date": "2026-09-30",
+  "scope": [
+    "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder/",
+    "2_DDC_Book/3.4-ERP-Integration/",
+    "2_DDC_Book/4.2-ETL-Automation/",
+    "2_DDC_Book/4.5-ML-Cost-Prediction/",
+    "2_DDC_Book/2.2-Open-Data-Standards/",
+    "2_DDC_Book/2.4-PDF-CAD-to-Data/",
+    "1_DDC_Toolkit/CAD-Converters/",
+    "1_DDC_Toolkit/BIM-Analysis/",
+    "1_DDC_Toolkit/Document-Control/",
+    "3_DDC_Insights/Automation-Workflows/",
+    "3_DDC_Insights/Field-Automation/",
+    "3_DDC_Insights/AI-Agents/"
+  ],
+  "focus": [
+    "SQL injection (f-string queries with attacker input)",
+    "command injection (subprocess with unsanitized paths/args)",
+    "SSRF (user URL to requests.get)",
+    "pickle.load of untrusted models",
+    "unauthenticated n8n webhooks",
+    "path traversal",
+    "unsafe deserialization",
+    "header injection"
+  ],
+  "result": "NONE",
+  "findings": [],
+  "skipped_already_reported": [
+    {
+      "location": "1_DDC_Toolkit/Document-Control/rfi-management/SKILL.md",
+      "title": "Unauthenticated /rfi-notification webhook forges official RFI email+Telegram",
+      "ref": "flagged-vulnerabilities-27 / bc-95c78c8c"
+    },
+    {
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-daily-report/SKILL.md",
+      "title": "Unauthenticated daily-report-data webhook abuses Procore OAuth + forges email/SharePoint reports",
+      "ref": "flagged-vulnerabilities-21 / bc-88e1ee40"
+    },
+    {
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-photo-report/SKILL.md",
+      "title": "Unauthenticated photo-upload webhook burns Anthropic key and poisons safety digest",
+      "ref": "flagged-vulnerabilities-21 / bc-88e1ee40"
+    },
+    {
+      "location": "1_DDC_Toolkit/BIM-Analysis/ifc-qto-extraction/SKILL.md",
+      "title": "Unauthenticated /qto-extract webhook Execute Command RCE via model_path",
+      "ref": "flagged-21 near-miss note: already reported"
+    },
+    {
+      "location": "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md",
+      "title": "extract_from_api(api_url) SSRF via requests.get",
+      "ref": "flagged-21 near-miss note: already reported"
+    },
+    {
+      "location": "2_DDC_Book/3.4-ERP-Integration/erp-data-extractor/SKILL.md",
+      "title": "generate_sql_query f-string filter SQLi pattern",
+      "ref": "flagged-21 near-miss note: already reported"
+    },
+    {
+      "location": "3_DDC_Insights/Field-Automation/telegram-field-bot + n8n-pto-pipeline + n8n-project-management",
+      "title": "Telegram bots missing user allowlists",
+      "ref": "flagged-21 near-miss note: already reported"
+    }
+  ],
+  "near_misses": [
+    {
+      "item": "n8n-cost-estimation shell interpolation of file_path",
+      "location": "3_DDC_Insights/Automation-Workflows/n8n-cost-estimation/SKILL.md:54-57",
+      "why": "Classic command-injection sink: `RvtExporter.exe \"${filePath}\" complete bbox` from $input JSON. No documented webhook/form/trigger that lets a remote attacker supply file_path — operator/pipeline-local input only under hunt criteria."
+    },
+    {
+      "item": "multi-agent-estimation illustrative Webhook",
+      "location": "3_DDC_Insights/AI-Agents/multi-agent-estimation/SKILL.md:177-215",
+      "why": "Sketch node `{type: Webhook, note: Receive IFC file upload}` then AI agents + email — not a concrete n8n-nodes-base.webhook export (no path/httpMethod/auth fields). Same incomplete-chain class as previously discarded illustrative @app.post snippets."
+    },
+    {
+      "item": "voice-to-report Telegram → OpenAI key burn",
+      "location": "3_DDC_Insights/Field-Automation/voice-to-report/SKILL.md:178-225",
+      "why": "Telegram Trigger with Whisper+GPT and DB write, no allowlist. Same missing-Telegram-allowlist class already reported for field/n8n bots; workflow JSON is schematic. Hypothetical /voice-report mobile API is not implemented in the skill."
+    },
+    {
+      "item": "sql-query-builder unescaped f-string SQL",
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder/SKILL.md:70-95,221,287-353,448-497",
+      "why": "String values, table/column identifiers, and month in daily_report_summary are interpolated without escaping/parameterization. Builder returns strings only — no execute/network listener. Same library-SQLi class as already-reported erp-data-extractor generate_sql_query."
+    },
+    {
+      "item": "ml-model-retrainer pickle.load / cost-prediction joblib.load",
+      "location": "2_DDC_Book/4.5-ML-Cost-Prediction/ml-model-retrainer/SKILL.md:349-352; cost-prediction/SKILL.md:403-405",
+      "why": "Unsafe deserialization sinks exist, but load path is operator-supplied local filepath with no untrusted auto-load / webhook. Prior hunts already classified as near-miss."
+    },
+    {
+      "item": "CAD-Converters / ifc-qto Python subprocess list argv",
+      "location": "1_DDC_Toolkit/CAD-Converters/*; ifc-qto-extraction convert_model",
+      "why": "subprocess.run(cmd) with shell=False; paths/options are operator-chosen local args. Not a remote chain unless already controlling the caller. n8n Execute Command path separately already reported for ifc-qto."
+    },
+    {
+      "item": "airflow-dag BashOperator code generation",
+      "location": "2_DDC_Book/4.2-ETL-Automation/airflow-dag/SKILL.md:74-86,192-196",
+      "why": "bash_command and task_id interpolated into generated DAG source. Inputs come from ConstructionDAGBuilder.add_bash_task caller (operator/templates), no remote ingress."
+    },
+    {
+      "item": "pdf-report-generator unescaped HTML",
+      "location": "2_DDC_Book/4.2-ETL-Automation/pdf-report-generator/SKILL.md:260-345",
+      "why": "to_html() interpolates titles/values without escaping. Stored-XSS class already reported for cwicr/kpi/gantt/pdf reports; no public serving endpoint in this skill."
+    },
+    {
+      "item": "price-api / weather-api / open-data-integrator HTTP clients",
+      "location": "2_DDC_Book/2.2-Open-Data-Standards/*",
+      "why": "requests.get targets fixed bases (FRED, Open-Meteo, OpenWeatherMap). No attacker-controlled URL → no SSRF chain."
+    },
+    {
+      "item": "etl extract_from_database(query) / ConstructionETLPipeline",
+      "location": "2_DDC_Book/4.2-ETL-Automation/etl-pipeline/SKILL.md:137-148,360-436",
+      "why": "Arbitrary SQL string accepted by helper, but library-only; pipeline extract() uses local excel/pdf folders from config, not extract_from_api. extract_from_api SSRF already reported separately."
+    },
+    {
+      "item": "n8n-photo/daily Python helpers requests.post(webhook_url)",
+      "location": "n8n-photo-report/SKILL.md:171-185; n8n-daily-report/SKILL.md:146-157",
+      "why": "Client-side helper posts to caller-supplied webhook_url (operator SSRF/misconfig). Distinct receive-side unauth webhooks already reported; helper itself is intentional operator upload trigger."
+    },
+    {
+      "item": "Open-Data / PDF-CAD / Document-Control (non-RFI) / BIM (non-QTO)",
+      "why": "No webhook/listener/shell=True/pickle-of-untrusted-remote sinks with attacker-to-impact remote reach beyond already-reported items."
+    }
+  ]
+}
