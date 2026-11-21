@@ -1,0 +1,290 @@
+{
+  "hunt": "1_DDC_Toolkit/CWICR-Database remaining skills business-logic hunt",
+  "date": "2026-10-05",
+  "branch": "cursor/bc-47d10748-ed18-4c3b-85a5-ba23218ce53b-bca5",
+  "scope": [
+    "cwicr-bid-analyzer",
+    "cwicr-material-procurement",
+    "cwicr-assembly-builder",
+    "cwicr-crew-optimizer",
+    "cwicr-labor-scheduler",
+    "cwicr-risk-calculator",
+    "cwicr-escalation",
+    "cwicr-location-factor",
+    "cwicr-waste-calculator",
+    "cwicr-quantity-matcher",
+    "cwicr-material-substitution",
+    "cwicr-equipment-planner",
+    "cwicr-cost-calculator",
+    "cwicr-comparison-tool",
+    "cwicr-productivity-tracker",
+    "cwicr-schedule-integrator",
+    "cwicr-work-breakdown",
+    "cwicr-takeoff-helper",
+    "cwicr-resource-analyzer",
+    "cwicr-data-validator",
+    "cwicr-report-generator",
+    "semantic-search-cwicr",
+    "cwicr-unit-converter",
+    "cwicr-multilingual"
+  ],
+  "skipped_already_known": [
+    "cwicr-change-order",
+    "cwicr-value-engineering",
+    "cwicr-rate-updater",
+    "cwicr-historical-cost",
+    "cwicr-data-loader",
+    "cwicr-subcontractor",
+    "cwicr-overhead-markup"
+  ],
+  "result": "1 CRITICAL + 6 HIGH + 2 MEDIUM validated NEW findings",
+  "summary": {
+    "critical": 1,
+    "high": 6,
+    "medium": 2,
+    "total": 9
+  },
+  "findings": [
+    {
+      "id": "CWICR-01",
+      "severity": "CRITICAL",
+      "title": "Bid analyzer unknown work-item codes self-benchmark to COMPLIANT then mint RECOMMENDED award",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md",
+      "description": "analyze_bid() replaces a missing CWICR benchmark with the bidder's own unit_rate, so variance_pct is always 0 (NORMAL). Status becomes COMPLIANT. compare_bids() then ranks by bid_total and promotes the lowest COMPLIANT bidder to BidStatus.RECOMMENDED — an explicit award recommendation.",
+      "impact": "A bidder who invents fake item codes (or mistypes codes so no benchmark exists) bypasses all price-anomaly checks, underquotes via arbitrary total_price, and is minted as the recommended award winner against honest bidders priced against real CWICR rates.",
+      "attack_path": [
+        "1. Attacker submits bid rows with unknown item_code values (e.g. FAKE-999) and near-zero unit_rate/total_price.",
+        "2. get_benchmark_rate returns None; analyze_bid sets benchmark_rate = bid_rate.",
+        "3. Line and total variance compute as 0 → status COMPLIANT with empty flags.",
+        "4. compare_bids ranks by bid_total and sets status=RECOMMENDED for the attacker."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:160-162 (unknown → benchmark_rate = bid_rate)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:188-194 (COMPLIANT when variance within band)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:237-244 (lowest COMPLIANT → RECOMMENDED)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_unknown_code_award"
+      ],
+      "remediation": "Fail closed on missing benchmarks (NON_COMPLIANT / exclude from recommendation). Never substitute bidder rates as benchmarks. Require a minimum fraction of lines to match known CWICR codes before COMPLIANT/RECOMMENDED.",
+      "why_exploitable": "Attacker fully controls bid DataFrame item codes and prices; the skill itself mints RECOMMENDED used for award decisions; PoC confirms attacker beats an honest benchmarked bid.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-02",
+      "severity": "HIGH",
+      "title": "Bid analyzer accepts negative quantities that underbid while remaining COMPLIANT/RECOMMENDED",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md",
+      "description": "analyze_bid casts quantity with float() and never rejects qty <= 0. Negative quantities produce matching negative benchmark_totals when rates match CWICR, so line and total variance stay 0 (COMPLIANT). bid_total = sum(total_price) drops, so compare_bids awards RECOMMENDED to the underbidder.",
+      "impact": "A contractor can cancel half a bid's value with negative-qty lines that look rate-compliant, win lowest-price ranking, and receive RECOMMENDED status — fraudulent award path.",
+      "attack_path": [
+        "1. Submit a normal CONC-001 line at market rate (qty=100).",
+        "2. Add a second CONC-001 line with quantity=-50 at the same unit_rate.",
+        "3. analyze_bid yields variance 0 / COMPLIANT with bid_total halved.",
+        "4. compare_bids ranks attacker lowest among COMPLIANT bids and mints RECOMMENDED."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:154-158 (qty/rate/total cast with no validation)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:180-194 (totals/status from unchecked amounts)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:237-244 (RECOMMENDED mint)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_negative_qty_award"
+      ],
+      "remediation": "Reject quantity <= 0 and non-finite rates/totals. Optionally require total_price ≈ unit_rate * quantity within tolerance.",
+      "why_exploitable": "Negative quantities are attacker-controlled bid inputs; status and ranking logic treat them as valid; PoC shows RECOMMENDED underbid vs honest bidder.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-03",
+      "severity": "HIGH",
+      "title": "Zero CWICR benchmark triggers division-by-zero guard that forces NORMAL/COMPLIANT then award",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md",
+      "description": "When benchmark_rate is 0 (CWICR item with all cost components 0, or poisoned zero rates), variance_pct is forced to 0 instead of flagging. Any bid_rate is treated as NORMAL. Combined with a low total_price, the bid stays COMPLIANT and wins RECOMMENDED.",
+      "impact": "Zero-cost (or attacker-poisoned) codes become a free pass into COMPLIANT/RECOMMENDED with arbitrary unit rates and token totals — award manipulation and competitive-status forge.",
+      "attack_path": [
+        "1. Target or include a work_item_code whose CWICR labor+material+equipment sums to 0.",
+        "2. Bid any unit_rate (even 99999) with a tiny total_price.",
+        "3. variance_pct collapses to 0 via the benchmark_rate > 0 guard → COMPLIANT.",
+        "4. compare_bids selects the attacker as RECOMMENDED over honest priced scope."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:165 (variance_pct = 0 when benchmark_rate <= 0)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:183 (total_variance = 0 when benchmark_total <= 0)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:237-244 (RECOMMENDED)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_zero_benchmark_competitive"
+      ],
+      "remediation": "Treat benchmark_rate <= 0 as missing data (flag / NON_COMPLIANT). Do not map zero-benchmark lines to NORMAL variance.",
+      "why_exploitable": "Division-by-zero guard converts missing economics into a competitive green status that directly feeds award recommendation; PoC validated.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-04",
+      "severity": "HIGH",
+      "title": "Bid total_price is trusted independently of unit_rate×quantity enabling compliant underbid awards",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md",
+      "description": "Line-item price flags use unit_rate vs benchmark, but bid_total ranking and total_variance use the separate total_price column. An attacker matching unit rates (0% line variance, no flags) can set total_price down to ~71% of benchmark (still within the ±30% COMPLIANT window) and win RECOMMENDED.",
+      "impact": "Market-rate unit prices create a clean audit trail while forged line totals undercut competitors within the compliance band — silent award capture.",
+      "attack_path": [
+        "1. Copy honest unit rates that match CWICR benchmarks (line variance 0).",
+        "2. Set total_price ≈ 0.71 × benchmark_total (total_variance ≈ -29%).",
+        "3. analyze_bid returns COMPLIANT with empty/normal flags.",
+        "4. compare_bids ranks the lower total_price first and mints RECOMMENDED."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:156-158 (total_price taken from column, not enforced as rate*qty)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:181-194 (bid_total from total_price; ±30% COMPLIANT)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-bid-analyzer/SKILL.md:232-244 (rank by bid_total → RECOMMENDED)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_decoupled_total_price"
+      ],
+      "remediation": "Derive or validate total_price = unit_rate * quantity; reject rows exceeding tolerance. Rank recommendations on validated totals only.",
+      "why_exploitable": "Attacker controls both columns; compliance checks the rates while award ranking trusts the totals; PoC shows RECOMMENDED with matching rates and forged totals.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-05",
+      "severity": "HIGH",
+      "title": "Cost calculator unknown work codes return $0 MISSING_DATA that still roll into project totals",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md",
+      "description": "calculate_item_cost returns a CostBreakdown with all costs 0 and status MISSING_DATA when a code is not found. calculate_estimate / reports sum total_cost across all breakdowns without excluding MISSING_DATA, so unknown codes silently understate the estimate.",
+      "impact": "Attacker- or typo-injected unknown codes (or deliberate omission of expensive scope via fake codes) drive project estimates toward $0 for those lines, underfunding budgets and distorting bids/awards that consume the estimate.",
+      "attack_path": [
+        "1. Include real CWICR lines plus high-value scope under unknown codes (e.g. STRUCT-PHANTOM).",
+        "2. calculate_item_cost returns MISSING_DATA zeros for unknowns.",
+        "3. calculate_estimate sums labor/material/equipment/total including those zeros.",
+        "4. Downstream budget/bid uses the understated total_cost."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md:159-166 (NOT FOUND → $0 MISSING_DATA)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md:219-238 (estimate sums all breakdowns)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_cost_unknown_zero"
+      ],
+      "remediation": "Exclude MISSING_DATA from monetary totals or fail the estimate; surface an error/required-resolution gate before export.",
+      "why_exploitable": "Unknown codes are attacker-controlled QTO inputs; the skill silently prices them at $0 inside the official total — classic unknown-code skip-to-$0 chain.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-06",
+      "severity": "HIGH",
+      "title": "Cost calculator accepts unbounded/negative overhead, profit, and price_overrides that collapse estimates",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md",
+      "description": "Constructor uses `overhead_rate or DEFAULT` / `profit_rate or DEFAULT`, so negative rates are accepted (truthy) while 0 falls back to defaults. calculate_item_cost also applies unbounded price_overrides (labor_rate, material_factor, equipment_factor) with no floor/ceiling. Negatives or near-zero factors collapse or invert totals.",
+      "impact": "Caller-chosen rates can wipe ~95%+ of an estimate (PoC: $12,650 → $500) or zero material/equipment via overrides, producing fraudulent low budgets used for funding, bids, or VE decisions.",
+      "attack_path": [
+        "1. Instantiate CWICRCostCalculator(..., overhead_rate=-0.9, profit_rate=-0.5).",
+        "2. Optionally pass price_overrides material_factor=0 / equipment_factor=0 on items.",
+        "3. calculate_item_cost / calculate_estimate emit collapsed total_cost.",
+        "4. Export/report presents the understated figure as the project estimate."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md:126-133 (or-default allows negatives)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md:174-182 (unbounded price_overrides)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-cost-calculator/SKILL.md:192-197 (OH/profit applied unchecked)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_cost_negative_overhead"
+      ],
+      "remediation": "Clamp overhead/profit to an allowed band (e.g. 0–1); reject non-positive override factors; use `is None` checks instead of `or`.",
+      "why_exploitable": "Hunt pattern 'unbounded rates' / negative costs: caller directly supplies constructor args and per-item overrides that flow into monetary totals without bounds.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-07",
+      "severity": "HIGH",
+      "title": "Schedule integrator earned-value progress percent is unbounded, forging CPI/EAC",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md",
+      "description": "calculate_earned_value multiplies budgeted_cost by progress[activity_id]/100 with no clamp to [0,100]. Inflated progress forges EV, drives CPI = EV/AC above 1 even when overspent, and collapses EAC = BAC/CPI — a caller-chosen flag that mints a false healthy performance award.",
+      "impact": "Project teams (or anyone feeding progress dicts) can report 200–250% complete, manufacture CPI>2 and understated EAC, masking cost overruns and unlocking progress-based payments/decisions that trust these metrics.",
+      "attack_path": [
+        "1. Build activities with real CWICR-backed budgeted_cost.",
+        "2. Call calculate_earned_value with progress={id: 250} and actual_costs reflecting overspend.",
+        "3. EV = BAC * 2.5; CPI = EV/AC > 1; EAC = BAC/CPI understates remaining cost.",
+        "4. Consumers treat forged SPI/CPI/EAC as project health / payment inputs."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md:273-277 (uncapped progress %)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-schedule-integrator/SKILL.md:286-297 (CPI/EAC from forged EV)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_schedule_progress_forge"
+      ],
+      "remediation": "Clamp progress to [0, 100]; reject negative actual_costs; optionally require progress updates to be attested by an authorized role.",
+      "why_exploitable": "Progress is fully caller-controlled with no authz; metrics that drive schedule/financial decisions are directly forged; PoC shows CPI/EAC manipulation.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-08",
+      "severity": "MEDIUM",
+      "title": "Risk calculator trusts caller min_factor/max_factor to collapse contingency and P80",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md",
+      "description": "calculate_item_risk passes item.get('min_factor') / max_factor straight into RiskParameters with no bounds. Deterministic P80 and Monte Carlo ranges then use those factors, so an attacker can set both to 0.01 and produce negative contingency vs base (underfunded risk allowance).",
+      "impact": "Risk-adjusted budgets and contingency recommendations can be driven near zero despite large base estimates, understating reserves used for funding/approvals.",
+      "attack_path": [
+        "1. Supply estimate items with min_factor=0.01 and max_factor=0.01.",
+        "2. analyze_risk / define_item_risk accepts the factors.",
+        "3. P80 computes far below base → contingency_amount negative.",
+        "4. Exported risk report recommends inadequate contingency."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md:183-189 (caller min/max factors)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-risk-calculator/SKILL.md:275-288 (P80/contingency from factors)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_risk_factor_collapse"
+      ],
+      "remediation": "Clamp factors to a policy band (e.g. min∈[0.5,1.0], max∈[1.0,2.0]); ignore caller overrides without a privileged role.",
+      "why_exploitable": "Unbounded caller-chosen risk factors flow into published contingency dollars; PoC shows >90% contingency wipeout.",
+      "verified": true
+    },
+    {
+      "id": "CWICR-09",
+      "severity": "MEDIUM",
+      "title": "Waste calculator applies unbounded custom_factors that inflate order quantities and costs",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-waste-calculator/SKILL.md",
+      "description": "calculate_waste / calculate_project_waste accept custom_factors (or per-item waste_factors) and sum cutting+spillage+breakage+overrun with no upper bound or sign check. Extreme factors produce order quantities orders of magnitude above base, inflating procurement spend.",
+      "impact": "Attacker-supplied waste factors can inflate PO quantities (PoC: 100 → 2100 units) and waste_cost, causing over-ordering / budget drain when results feed procurement.",
+      "attack_path": [
+        "1. Call calculate_project_waste with waste_factors totaling e.g. 20.0 (2000%).",
+        "2. calculate_waste multiplies base_quantity by the sum unchecked.",
+        "3. order_quantity_increase / waste_cost explode.",
+        "4. Downstream procurement/ordering uses the inflated gross quantity."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-waste-calculator/SKILL.md:200-211 (custom_factors applied unbounded)",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-waste-calculator/SKILL.md:236-262 (project rollup of waste qty/cost)",
+        "PoC: security-findings/poc_cwicr_remaining_logic_hunt_2026-10-05.py::poc_waste_unbounded"
+      ],
+      "remediation": "Clamp each waste component to a realistic band (e.g. 0–0.25) and total waste ≤ policy max; reject negatives.",
+      "why_exploitable": "custom_factors are attacker-controlled dict inputs that directly scale order quantities and costs; PoC shows 21× inflation.",
+      "verified": true
+    }
+  ],
+  "near_misses": [
+    {
+      "candidate": "cwicr-report-generator HTML XSS via project_name/category interpolation",
+      "why": "XSS/injection class, not a financial/award business-logic chain for this hunt"
+    },
+    {
+      "candidate": "cwicr-quantity-matcher unknown unit pair → conversion factor 1.0",
+      "why": "Common pairs are mapped; residual alias gaps are data-quality without a reliable attacker award path"
+    },
+    {
+      "candidate": "cwicr-location-factor add_location / cwicr-escalation custom_rates / cwicr-crew-optimizer custom_rates",
+      "why": "Intentional configuration APIs without COMPLIANT/RECOMMENDED-style award mint; same discard class as overhead-markup calculator config"
+    },
+    {
+      "candidate": "cwicr-labor-scheduler / cwicr-material-procurement / cwicr-assembly-builder unknown-code silent skip",
+      "why": "Omits unknown codes rather than forging a positive competitive/award status; weaker complete chain than bid-analyzer RECOMMENDED"
+    },
+    {
+      "candidate": "cwicr-productivity-tracker tiny actual_hours → EXCELLENT",
+      "why": "Performance badge only; no payment/award consumer in-skill"
+    },
+    {
+      "candidate": "cwicr-comparison-tool / cwicr-data-validator / cwicr-unit-converter / cwicr-multilingual / semantic-search-cwicr",
+      "why": "Reporting, validation (correctly flags negatives), raise-on-unknown units, translation, or search — no MEDIUM+ award/financial forge chain"
+    },
+    {
+      "candidate": "cwicr-equipment-planner rent_vs_buy daily_rate division",
+      "why": "Catalog daily_rates are positive; no caller-controlled zero-rate award path validated"
+    },
+    {
+      "candidate": "cwicr-takeoff-helper over-deduction negative net area",
+      "why": "Arithmetic footgun without status forge or award mint"
+    },
+    {
+      "candidate": "cwicr-material-substitution / cwicr-work-breakdown / cwicr-resource-analyzer",
+      "why": "Advisory decomposition/substitution without approval or award state machine"
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "hunt": "2_DDC_Book remaining + 1_DDC_Toolkit leftovers (BIM/Analytics/Cost/Doc/Field/Sustainability) + curated cashflow/budget/lien/clause",
+  "date": "2026-10-05",
+  "branch": "cursor/bc-47d10748-ed18-4c3b-85a5-ba23218ce53b-bca5",
+  "result": "1 CRITICAL + 2 HIGH + 1 MEDIUM validated NEW findings",
+  "summary": {
+    "critical": 1,
+    "high": 2,
+    "medium": 1,
+    "total": 4
+  },
+  "skipped_already_reported": [
+    "ifc-qto /qto-extract RCE",
+    "etl extract_from_api SSRF",
+    "erp SQL f-strings (generate only)",
+    "sql-query-builder string SQLi (no execute)",
+    "pickle/joblib operator paths",
+    "CAD subprocess shell=False",
+    "weather fixed-host SSRF",
+    "change-order-processor approve DRAFT\u2192APPROVED + post-mutate",
+    "subcontractor-payment-tracker uncapped invoice / neg retention",
+    "payment-application-generator negative retainage_percent",
+    "toolkit budget-variance-analyzer adjust_budget",
+    "lien-waiver RECEIVED unlocks can_release; convert_to_unconditional overwrite; neg retainage_rate",
+    "material-delivery-tracker forge DELIVERED"
+  ],
+  "near_misses": [
+    {
+      "candidate": "ml-model-retrainer pickle.load(path)",
+      "why": "Unsafe deser sink present, but path is operator-supplied with no remote/unauth trigger (same class as prior pickle/joblib near-misses)"
+    },
+    {
+      "candidate": "airflow-dag BashOperator bash_command + save_dag(output_path)",
+      "why": "Codegen template; command/path controlled by operator writing the DAG, not a remote attacker"
+    },
+    {
+      "candidate": "workflow-automation _load_csv/_extract_* path from task config",
+      "why": "Local workflow engine; no unauth API/webhook to inject config"
+    },
+    {
+      "candidate": "curated cashflow-forecaster set_payment_terms(neg retainage)",
+      "why": "Mid-period income inflates but retainage_release = contract*rate is also negative so lifetime total still equals contract"
+    },
+    {
+      "candidate": "estimate-builder/unit-price/auto-estimate negative rates/qty",
+      "why": "Calculator/estimate builders without approval/payment state machine (same discard class as overhead-markup)"
+    },
+    {
+      "candidate": "BIM-Analysis clash/classification/validation/progress-photo; Analytics; Sustainability; BIM-Visualization; meeting-minutes; contract-clause-*; labor-productivity; Field daily-report/progress-photo",
+      "why": "No new complete MEDIUM+ injection/SSRF/deser/authz/financial forge chains beyond already-reported surfaces"
+    },
+    {
+      "candidate": "Field daily-report distribute_report portal_url",
+      "why": "upload_to_portal/send_email are undefined stubs; weather host fixed to openweathermap"
+    }
+  ],
+  "findings": [
+    {
+      "id": "BT-01",
+      "severity": "CRITICAL",
+      "title": "payment-application-generator forges unapproved CO and uncapped SOV progress into G702 payment due",
+      "location": "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md",
+      "description": "add_change_order() is documented as adding an 'approved' change order but performs no approval, status, or auth check \u2014 any caller can inflate change_orders_total and invent SOV lines. create_application() then accepts arbitrary progress['work']/['materials'] with no clamp to scheduled_value. calculate_payment_due()/generate_g702() emit current_payment_due from those forged totals. Distinct from the already-reported negative retainage_percent bug on the same skill.",
+      "impact": "A contractor (or anyone invoking the generator) can mint a multi-million-dollar payment application: PoC forges a $2M CO onto a $1M contract and bills $5M completed \u2192 $4.5M current payment due at 10% retainage, producing fraudulent AIA G702/G703 documents.",
+      "attack_path": "1. Caller constructs PaymentApplicationGenerator(original_contract=1_000_000).\n2. setup_sov with a real $500k line.\n3. add_change_order(2_000_000, 'Phantom CO') with no approval workflow \u2014 contract sum becomes $3M and SOV gains CO-01.\n4. create_application(..., progress={'001':{'work':3_000_000},'CO-01':{'work':2_000_000}}) with no SOV cap.\n5. calculate_payment_due / generate_g702 report current_payment_due=$4,500,000.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:156-176 (add_change_order no approval)",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:178-234 (create_application uncapped progress)",
+        "1_DDC_Toolkit/Cost-Management/payment-application-generator/SKILL.md:236-283 (calculate_payment_due / generate_g702)",
+        "PoC: security-findings/poc_book_toolkit_remaining_hunt_2026-10-05.py::poc_payapp_forge_overbill"
+      ],
+      "remediation": "Require an approved CO id/status before mutating change_orders_total; clamp period progress so cumulative completed \u2264 scheduled_value; reject non-positive amounts; require a separate approver role before generate_g702/export.",
+      "verified": true
+    },
+    {
+      "id": "BT-02",
+      "severity": "HIGH",
+      "title": "cash-flow-forecaster negative retention_percent permanently inflates inflows/outflows",
+      "location": "1_DDC_Toolkit/Cost-Management/cash-flow-forecaster/SKILL.md",
+      "description": "_generate_item_payments computes net_amount = total_amount * (1 - retention_percent) with no bounds check, then only posts a retention release when retention_percent > 0. A negative retention therefore scales every period payment up and skips the offsetting release, so lifetime scheduled cash permanently exceeds the item total.",
+      "impact": "Financing and owner-draw forecasts can be inflated 50\u2013100%+ (PoC: $1M revenue with retention=-0.50 yields $1.5M total inflow and no retention release). Cost items with negative retention similarly invent outflows for vendor cash planning.",
+      "attack_path": "1. Caller adds a revenue (or cost) item via add_revenue_item/add_cost_item with retention=-0.50.\n2. generate_payment_schedule \u2192 _generate_item_payments sets net_amount = total * 1.5 and distributes it.\n3. Because retention_percent > 0 is false, no retention release payment is created.\n4. generate_cash_flow_forecast / get_funding_requirements trust the inflated schedule.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/cash-flow-forecaster/SKILL.md:203-206 (net_amount = total * (1 - retention))",
+        "1_DDC_Toolkit/Cost-Management/cash-flow-forecaster/SKILL.md:241-254 (release only if retention_percent > 0)",
+        "PoC: security-findings/poc_book_toolkit_remaining_hunt_2026-10-05.py::poc_cashflow_neg_retention"
+      ],
+      "remediation": "Clamp retention_percent to [0, 1]; reject negatives; always reconcile period nets + release to equal total_amount; validate on add_cost_item/add_revenue_item.",
+      "verified": true
+    },
+    {
+      "id": "BT-03",
+      "severity": "HIGH",
+      "title": "curated budget-variance-analyzer revise_budget hides overruns; use_contingency unbounded",
+      "location": "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md",
+      "description": "revise_budget() overwrites revised_budget and forecast with any caller-supplied value and no approval, audit gate, or comparison to actuals \u2014 turning a -$150k overrun into a +$50k 'under budget' variance. use_contingency() increments contingency_used by any amount (including millions) with no contingency pool, remaining-balance check, or approval, and adds that amount onto the target code's revised_budget. Distinct from the already-reported toolkit adjust_budget finding (different API/path).",
+      "impact": "Cost controllers or anyone calling the analyzer can erase visible overruns from variance reports and invent unlimited contingency transfers, falsifying EAC/VAC and executive cost-control dashboards.",
+      "attack_path": "1. Cost code 03 has original budget $200k and actual $350k (variance -$150k).\n2. Attacker calls revise_budget('03', 400_000) with no approval \u2192 variance becomes +$50k.\n3. Attacker calls use_contingency(5_000_000, '03') with no remaining-contingency check \u2192 revised_budget becomes $5.4M and contingency_used=$5M.\n4. generate_variance_report reflects the forged healthy status.",
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md:209-219 (revise_budget)",
+        "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md:221-230 (use_contingency)",
+        "4_DDC_Curated/Financial-Management/budget-variance-analyzer/SKILL.md:70-76 (budget/variance properties trust revised_budget)",
+        "PoC: security-findings/poc_book_toolkit_remaining_hunt_2026-10-05.py::poc_budget_revise_contingency"
+      ],
+      "remediation": "Require dual-control approval for revise_budget; cap revised_budget changes; initialize a contingency pool and reject use_contingency when amount <= 0 or amount > remaining; audit both mutations.",
+      "verified": true
+    },
+    {
+      "id": "BT-04",
+      "severity": "MEDIUM",
+      "title": "bim-cost-estimation-cwicr project_name path traversal writes Excel outside output_path",
+      "location": "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md",
+      "description": "generate_estimate_report builds excel_path via f-string concatenation f\"{output_path}/{project_name}_Estimate.xlsx\" with no sanitization of project_name. estimate_from_bim_model sets project_name = Path(model_path).stem, and callers can also pass project_name directly. A project_name containing ../ escapes the intended output directory and writes the estimate workbook elsewhere.",
+      "impact": "Attacker-controlled project_name (or a model_path stem crafted with path separators where accepted) overwrites or plants Excel files outside the designated estimates folder \u2014 integrity/availability impact on adjacent project data.",
+      "attack_path": "1. Caller invokes generate_estimate_report(..., project_name='../outside/pwned', output_path='/data/estimates').\n2. excel_path resolves to /data/outside/pwned_Estimate.xlsx (outside /data/estimates).\n3. pd.ExcelWriter creates/overwrites that path.\n4. PoC confirmed Path.resolve() escape and write into a sibling directory.",
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:405-407",
+        "1_DDC_Toolkit/Cost-Management/bim-cost-estimation-cwicr/SKILL.md:470-474 (project_name from model stem)",
+        "PoC: security-findings/poc_book_toolkit_remaining_hunt_2026-10-05.py::poc_bimcost_path_traversal"
+      ],
+      "remediation": "Use Path(output_path) / f\"{safe_name}_Estimate.xlsx\" after stripping separators from project_name; resolve and assert the final path is contained under output_path.resolve(); reject names with .. or path separators.",
+      "verified": true
+    }
+  ],
+  "poc_result": "5 passed, 0 failed",
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_book-toolkit-remaining-hunt-2026-10-05.json",
+  "poc_artifact": "/opt/cursor/artifacts/poc_book_toolkit_remaining_hunt_2026-10-05.py"
+}
