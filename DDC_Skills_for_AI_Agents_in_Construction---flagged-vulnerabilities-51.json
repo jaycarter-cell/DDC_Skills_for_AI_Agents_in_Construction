@@ -1,0 +1,70 @@
+{
+  "hunt": "insights-underreviewed-skills-rehunt",
+  "date": "2026-10-14",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "cursor/vulnerability-findings-memory-23b9",
+  "commit": "34e0d78332ce6a510706703dcb61793ee85e4aed",
+  "run": "https://cursor.com/agents/bc-9eae3bca-b575-5a19-a22c-f632ccb6cb60",
+  "result": "1 HIGH",
+  "scope": [
+    "3_DDC_Insights/Automation-Workflows/n8n-pto-pipeline/SKILL.md",
+    "3_DDC_Insights/Automation-Workflows/n8n-project-management/SKILL.md",
+    "3_DDC_Insights/Automation-Workflows/n8n-cost-estimation/SKILL.md",
+    "3_DDC_Insights/Field-Automation/telegram-field-bot/SKILL.md",
+    "3_DDC_Insights/Field-Automation/voice-to-report/SKILL.md",
+    "3_DDC_Insights/AI-Agents/llm-document-extraction/SKILL.md",
+    "3_DDC_Insights/AI-Agents/multi-agent-estimation/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/compliance-tracker/SKILL.md",
+    "3_DDC_Insights/Safety-Quality/safety-inspection-checklist/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/delay-analysis/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/resource-allocation-optimizer/SKILL.md",
+    "3_DDC_Insights/Schedule-Optimization/critical-path-analyzer/SKILL.md",
+    "3_DDC_Insights/Open-Data-Transparency/uberization-readiness/SKILL.md"
+  ],
+  "findings": [
+    {
+      "id": "DDC-INSIGHTS-DELAY-EOT-FORGE-2026-10-14",
+      "severity": "HIGH",
+      "title": "delay-analysis awards EOT and contractor damages with no critical-path gate, no evidence, and caller-chosen DelayType",
+      "location": "3_DDC_Insights/Schedule-Optimization/delay-analysis/SKILL.md",
+      "evidence_lines": [73, 150, 155, 243, 252, 255, 341, 349, 355, 370, 371, 415, 416],
+      "description": "DelayAnalyzer.add_delay_event accepts attacker-chosen DelayType (including EXCUSABLE_COMPENSABLE) with documented=True by default and empty supporting_docs. calculate_delay_damages / generate_analysis_report then sum calendar-day spans (or TIA impact) for every EXCUSABLE event into recommended_time_extension and contractor_delay_damages = days * daily_cost — with no critical-path filter and no documentation check. perform_time_impact_analysis separately trusts schedule activity dict is_critical rather than computing CPM, and still awards delay_duration-5 days when is_critical is false (hardcoded float).",
+      "impact": "Fabricated owner-caused delays produce multi-month EOT recommendations and multi-million dollar delay-damage figures that flow into claims reports without schedule proof or evidence attachments.",
+      "attack_path": [
+        "Instantiate DelayAnalyzer and optionally set_daily_delay_cost(40000).",
+        "Call add_delay_event(..., DelayType.EXCUSABLE_COMPENSABLE, start/end spanning 91 days, affected_activities=['NONEXISTENT'], supporting_docs=[]). documented defaults True.",
+        "Skip TIA / skip baseline entirely — or, for TIA path, add_schedule_version with activities={id: {is_critical: True}}.",
+        "calculate_delay_damages() / generate_analysis_report() return recommended_time_extension=91 and contractor_delay_damages=$3,640,000 for use in claim documentation."
+      ],
+      "why_not_duplicate": "Distinct from toolkit schedule-delay-analyzer: that skill's calculate_time_extension_claim requires on_critical_path=True. Insights calculate_delay_damages has no critical-path gate, defaults documented=True with empty docs, falls back to raw calendar span without TIA, and emits contractor_delay_damages from daily_cost. Not the already-reported schedule-compression false recovery or Insights CPA zero-duration. Prior hunt listed DelayType only as a discarded near-miss; this is the complete EOT+money chain with validated PoC.",
+      "key_snippets": [
+        "documented: bool = True  # DelayEvent default",
+        "impact = event.calculated_impact or (event.end_date - event.start_date).days",
+        "if event.delay_type == DelayType.EXCUSABLE_COMPENSABLE: excusable_compensable += impact",
+        "'recommended_time_extension': excusable_compensable + excusable_non_compensable",
+        "'contractor_delay_damages': contractor_damages  # = days * daily_cost",
+        "if act.get('is_critical', False): critical_impact = True  # TIA trusts caller",
+        "impact_days = max(0, delay_duration - 5)  # non-critical still gets impact"
+      ],
+      "poc": {
+        "recommended_time_extension_days": 91,
+        "contractor_delay_damages": 3640000,
+        "daily_rate": 40000,
+        "tia_forged_is_critical_impact_days": 30,
+        "tia_noncritical_hardcoded_float_impact_days": 35
+      }
+    }
+  ],
+  "discarded_near_misses": [
+    "n8n-cost-estimation — builds `RvtExporter.exe \"${filePath}\"` but never invokes executeCommand/child_process; no webhook trigger in skill (same prior discard).",
+    "n8n-pto-pipeline / n8n-project-management — Telegram status/registration soft authZ; no RCE/SQLi/money sink (n8n-pto telegram already reported).",
+    "telegram-field-bot — parameterized SQL; photo path uses chat.id+file_id; unauth spam only.",
+    "voice-to-report / llm-document-extraction — library open()+LLM; no code-exec/secret-exfil sink beyond intended model call.",
+    "multi-agent-estimation — schematic Webhook→AI Agent tools; no concrete RCE wiring.",
+    "compliance-tracker ACTIVE forge / fail-open — same class as already-reported permit ISSUED + prior 'compliance soft ACTIVE' discard; no document gate but sibling SoR.",
+    "safety-inspection-checklist Pass forge + unused ChecklistItem.critical / signed_off — same class as toolkit safety-inspection Pass (already reported / prior discard).",
+    "resource-allocation-optimizer — critical double-book crane survives leveling with empty shifts; prior 'resource-allocation leveling' discard; weaker than resource-pool max-vs-sum HIGH.",
+    "critical-path-analyzer — zero duration already reported; simulate_delay(negative) same false-recovery class as schedule-compression.",
+    "uberization-readiness — incomplete stubs (rate_* undefined); no security sink."
+  ]
+}
