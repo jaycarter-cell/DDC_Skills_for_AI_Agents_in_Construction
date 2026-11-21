@@ -1,0 +1,109 @@
+{
+  "hunt": "2_DDC_Book / 5_DDC_Innovative / 3_Insights / 4_Curated leftover skills — HIGH/CRITICAL exploitable chains",
+  "date": "2026-10-06",
+  "branch": "cursor/at-rest-security-review-406d",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "scope": [
+    "2_DDC_Book/3.1-Cost-Estimation/{estimate-builder,unit-price-database-manager,cost-estimation-resource,labor-rate,historical-cost-analyzer}",
+    "2_DDC_Book/3.2-QTO-Auto-Estimates/{auto-estimate-generator,bim-qto}",
+    "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/{4d-simulation,resource-leveler,lifecycle-carbon-calculator}",
+    "2_DDC_Book/2.1-Data-Types-Classification/{xml-reader,json-parser,csv-handler}",
+    "2_DDC_Book/2.2-Open-Data-Standards/{price-api,weather-api,open-data-integrator}",
+    "2_DDC_Book/2.4-PDF-CAD-to-Data/{specification-extractor,drawing-analyzer}",
+    "2_DDC_Book/4.5-ML-Cost-Prediction/{duration-prediction,schedule-forecaster,ml-model-builder}",
+    "5_DDC_Innovative/{energy-simulation,prefab-optimization,open-construction-estimate,document-classification-nlp,labor-productivity-analytics,safety-compliance-checker}",
+    "3_DDC_Insights/{toolbox-talk-generator,uberization-readiness}",
+    "4_DDC_Curated/{cashflow-forecaster,payment-application-processor,retention-tracker,contract-clause-extractor}"
+  ],
+  "summary": {"critical": 0, "high": 2, "medium": 1, "total": 3},
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_book-innovative-curated-leftovers-hunt-2026-10-06.json",
+  "poc": "security-findings/poc_book_innovative_curated_leftovers_hunt_2026-10-06.py",
+  "poc_result": "4 passed, 0 failed",
+  "skipped_already_reported": [
+    "pickle/joblib operator paths (ml-model-retrainer/cost-prediction siblings; ml-model-builder uses json only)",
+    "weather-api / weather fixed-host SSRF (Open-Meteo / OpenWeatherMap constants)",
+    "payment-application-processor set_retainage_rates negatives + approve_pay_app DRAFT forge + update_line_item overbill (flagged-29)",
+    "retention-tracker negative release_retention + release ignores lien/conditions (flagged-29)",
+    "payment-application-generator CO+SOV overbill (flagged-35)",
+    "toolkit cash-flow-forecaster permanent neg retention inflate (flagged-35) — curated lifetime-cancel re-evaluated separately below"
+  ],
+  "findings": [
+    {
+      "id": "BK-L01",
+      "severity": "HIGH",
+      "location": "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md",
+      "title": "split_csv path traversal via unsanitized group_column → arbitrary file write",
+      "description": "ConstructionCSVHandler.split_csv builds output paths as Path(output_dir) / f\"{group_column}_{value}.csv\" with no sanitization. When group_column is an absolute path, pathlib replaces the base directory and writes outside output_dir. When group_column begins with '../', the join resolves above output_dir. Attacker-controlled CSV column names (or agent-selected headers from untrusted exports) become write targets.",
+      "impact": "Arbitrary file write as the process user: overwrite configs, drop payloads under writable paths, or plant files outside the intended split directory. Same class as prior bim-cost project_name path write, but with a stronger absolute-path Path-join replacement vector.",
+      "attack_path": [
+        "1. Supply an untrusted CSV whose header (or instruct the agent to use a column named) '/tmp/evil' or '../escaped'.",
+        "2. Agent/operator calls split_csv(df, group_column=<attacker header>, output_dir='./split_files').",
+        "3. filename becomes '/tmp/evil_<value>.csv' (absolute) or '../escaped_<value>.csv'; Path(output_dir)/filename escapes the sandbox.",
+        "4. subset.to_csv(filepath) writes attacker-controlled CSV content to the escaped path."
+      ],
+      "evidence": [
+        "2_DDC_Book/2.1-Data-Types-Classification/csv-handler/SKILL.md:161-176"
+      ],
+      "remediation": "Reject group_column/value containing path separators or '..'. Basename-only sanitize both components. Resolve the final path and assert it remains under output_dir.resolve() before writing."
+    },
+    {
+      "id": "BK-L02",
+      "severity": "HIGH",
+      "location": "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/resource-leveler/SKILL.md",
+      "title": "add_assignment accepts negative units that cancel usage and hide overallocation",
+      "description": "add_assignment stores ResourceAssignment.units with no positivity check. calculate_resource_usage does usage[resource_id][i] += assignment.units, so a second assignment with units=-N cancels a legitimate +N load. identify_overallocations then compares daily_usage > max_units and returns empty, so level_resources reports success with no moves.",
+      "impact": "Safety/schedule fraud: hide crane/crew overallocation that should block work or force leveling. Distinct methods from Insights crane negative-units finding (add_assignment / calculate_resource_usage / identify_overallocations in book resource-leveler).",
+      "attack_path": [
+        "1. Legitimate schedule assigns crane units=2 while max_units=1 (true overallocation).",
+        "2. Attacker calls add_assignment with the same resource/dates and units=-2 (or any canceling negative).",
+        "3. calculate_resource_usage nets daily usage to 0.",
+        "4. identify_overallocations returns []; leveling/success dashboards treat the schedule as resource-safe."
+      ],
+      "evidence": [
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/resource-leveler/SKILL.md:85-89",
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/resource-leveler/SKILL.md:110-114",
+        "2_DDC_Book/3.3-4D-BIM-CO2-Simulation/resource-leveler/SKILL.md:121-129"
+      ],
+      "remediation": "Reject assignment.units <= 0 in add_assignment. Optionally clamp or abs() in calculate_resource_usage. Fail closed if net usage is negative."
+    },
+    {
+      "id": "BK-L03",
+      "severity": "MEDIUM",
+      "location": "4_DDC_Curated/Financial-Management/cashflow-forecaster/SKILL.md",
+      "title": "set_payment_terms negative retainage_rate understates financing_required despite lifetime cancel",
+      "description": "Prior near-miss: negative retainage_rate inflates monthly net_billing but the final Retainage Release uses contract_value * retainage_rate (also negative), so lifetime income still equals contract_value. Re-evaluation shows the skill's primary decision outputs—peak_deficit and financing_required—are still forged for the entire construction period. PoC on a $5M/12mo project: financing_required drops from $360k (rate=0.10) to $147k (rate=-0.10) while lifetime income stays $5M.",
+      "impact": "Line-of-credit / financing decisions based on generate_forecast / calculate_financing_cost undersize liquidity needs by hundreds of thousands. Distinct from toolkit permanent inflow inflate and from pay-app neg retainage overbill: methods are set_payment_terms + generate_billing_schedule; impact is financing understatement, not payment overbilling.",
+      "attack_path": [
+        "1. Initialize CashFlowForecaster for a financed project (contract_value, estimated_cost, duration).",
+        "2. Call set_payment_terms(income_terms=..., retainage_rate=-0.10) with attacker-controlled rate (no bounds).",
+        "3. generate_billing_schedule writes inflated monthly IncomeItem.amount and a canceling negative INC-RET at end.",
+        "4. generate_forecast / calculate_financing_cost report a much lower financing_required; lenders/PMs act on the forged peak cash position."
+      ],
+      "evidence": [
+        "4_DDC_Curated/Financial-Management/cashflow-forecaster/SKILL.md:130-134",
+        "4_DDC_Curated/Financial-Management/cashflow-forecaster/SKILL.md:212-236",
+        "4_DDC_Curated/Financial-Management/cashflow-forecaster/SKILL.md:304"
+      ],
+      "remediation": "Clamp retainage_rate to [0, 1] (or project-legal max). Validate IncomeItem.amount >= 0 before forecast. Separately assert sum(income) ≈ contract_value within tolerance and flag interim/lifetime mismatch."
+    }
+  ],
+  "near_misses": [
+    "payment-application-processor approve_pay_app DRAFT+approved_amount forge — already HIGH in flagged-29",
+    "retention-tracker release_retention without lien/consent gates — already HIGH in flagged-29",
+    "unit-price-database-manager get_best_price prefers most-negative VendorQuote; apply_escalation unbounded — covered by prior unit-price calculator-negatives near-miss",
+    "estimate-builder / auto-estimate / cost-estimation-resource waste_factor & markup negatives — prior calculator near-miss; CWICR waste already reported",
+    "lifecycle-carbon-calculator gross_area inflate → fake A rating — advisory intensity gaming, no payment/status stamp",
+    "labor-productivity-analytics set_standard huge hours_per_unit → fake 'efficient' PI — KPI gaming without approval gate",
+    "safety-compliance-checker trusts self-reported PPE/permits in activity dict; no violation close forge API",
+    "prefab-optimization ModuleStatus.INSTALLED enum-only (prior near-miss)",
+    "toolbox-talk-generator generate_with_llm topic/context prompt injection (prior near-miss)",
+    "uberization-readiness scoring only / no stamp (prior near-miss)",
+    "xml-reader ET.parse/fromstring — stdlib ET does not resolve external entities (no XXE)",
+    "json-parser / drawing-analyzer / specification-extractor — read/parse only, no write/exec sinks",
+    "price-api FRED_BASE fixed host; weather-api OPEN_METEO fixed host — SSRF skip",
+    "open-data-integrator connectors simulated / fixed bases; register_connector is operator code injection not remote input",
+    "ml-model-builder json export only; duration-prediction / schedule-forecaster training poison is model-quality not RCE",
+    "contract-clause-extractor regex extraction / risk labels advisory only",
+    "csv-handler value-only '../' traversal fails without intermediate dirs (pandas to_csv does not mkdir) — unreliable alone; group_column vector is the finding"
+  ]
+}
