@@ -1,0 +1,296 @@
+{
+  "hunt": "contract-payment-logistics-authz-fail-open-2026-11-21",
+  "date": "2026-11-21",
+  "bcId": "bc-17acd8bf-8956-5114-bf81-8de27af2f52a",
+  "commit": "b8e594f93b9b7b3dc8260a2a6c224a36a387c29c",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "branch": "main",
+  "run": "https://cursor.com/agents/bc-17acd8bf-8956-5114-bf81-8de27af2f52a",
+  "scope": [
+    "4_DDC_Curated/Contract-Legal/change-order-manager",
+    "4_DDC_Curated/Contract-Legal/lien-waiver-tracker",
+    "1_DDC_Toolkit/Cost-Management/change-order-processor",
+    "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker",
+    "1_DDC_Toolkit/Cost-Management/material-delivery-tracker",
+    "5_DDC_Innovative/permit-tracking-automation",
+    "5_DDC_Innovative/safety-compliance-checker",
+    "5_DDC_Innovative/environmental-monitoring",
+    "5_DDC_Innovative/material-tracking-iot",
+    "5_DDC_Innovative/digital-twin-sync",
+    "5_DDC_Innovative/energy-simulation",
+    "5_DDC_Innovative/site-logistics-optimization",
+    "5_DDC_Innovative/capacity-planning",
+    "3_DDC_Insights/Safety-Quality/incident-reporting",
+    "3_DDC_Insights/Safety-Quality/compliance-tracker",
+    "1_DDC_Toolkit/Closeout/warranty-tracker",
+    "1_DDC_Toolkit/Project-Closeout/project-closeout-checklist",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-material-substitution",
+    "1_DDC_Toolkit/CWICR-Database/cwicr-equipment-planner",
+    "1_DDC_Toolkit/Field-Operations/*",
+    "1_DDC_Toolkit/Procurement/*",
+    "3_DDC_Insights/Field-Automation/telegram-field-bot",
+    "2_DDC_Book/2.1-Data-Types-Classification/sql-query-builder",
+    "2_DDC_Book/2.2-Open-Data-Standards/price-api",
+    "2_DDC_Book/2.2-Open-Data-Standards/weather-api"
+  ],
+  "result": "1 CRITICAL + 10 HIGH",
+  "poc": "security-findings/poc_contract_payment_logistics_authz_hunt_2026-11-21.py",
+  "poc_result": "ALL_POCS_PASSED",
+  "findings": [
+    {
+      "severity": "critical",
+      "location": "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md",
+      "title": "approve_change_order stamps APPROVED from DRAFT or REJECTED, skipping the enforced review gates",
+      "description": "ChangeOrderProcessor documents DRAFT → PENDING_REVIEW → PENDING_APPROVAL → APPROVED. submit_for_review() and submit_for_approval() enforce prior states, but approve_change_order() never checks status—it appends an ApprovalRecord and sets APPROVED/approved_date from any state including DRAFT and REJECTED. get_summary() then counts the forged CO into total_approved / contract impact. Live system-of-record (export Excel / summary).",
+      "impact": "A colluding PM/contractor agent can mint a six-figure APPROVED change order without review, or resurrect a REJECTED CO as approved. Owner pay-apps and revised contract totals follow that register.",
+      "attack_path": [
+        "1. Operator deploys ChangeOrderProcessor as the project CO register.",
+        "2. Attacker create_change_order + add_cost_item (stays DRAFT).",
+        "3. Attacker approve_change_order(co, approver=any, role=any) without submit_for_review.",
+        "4. Status is APPROVED; summary/export treat it as owner-approved cost.",
+        "5. Alternate: reject_change_order then approve_change_order → REJECTED flips to APPROVED."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:222-250",
+        "1_DDC_Toolkit/Cost-Management/change-order-processor/SKILL.md:252-270"
+      ],
+      "remediation": "Allow approve_change_order only from PENDING_APPROVAL. Reject transitions from DRAFT/REJECTED. Require a distinct prior reviewer identity.",
+      "verified": true,
+      "poc": "DRAFT steel package → APPROVED $302,500; REJECTED→APPROVED on second CO"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md",
+      "title": "approve_change_order jumps DRAFT→APPROVED with attacker-chosen amount; photos/backup unused",
+      "description": "ChangeOrderManager workflow documents Identify→Document→Price→Negotiate→Execute with photo/backup evidence fields, and execute_change_order correctly requires APPROVED. approve_change_order() sets APPROVED and writes approved_amount/approved_time_days from any prior status with no SUBMITTED/UNDER_REVIEW check and no requirement that photo_attachments or backup_documents be non-empty. get_summary().total_approved / revised_contract publish the forged award.",
+      "impact": "DRAFT CO approved at $2.5M with empty evidence revises a $1M contract to $3.5M on the official summary—claim/payment inflation without documentation.",
+      "attack_path": [
+        "1. Deploy ChangeOrderManager as the curated CO log (get_summary / notes audit trail).",
+        "2. create_change_order leaves DRAFT with empty photo_attachments/backup_documents.",
+        "3. approve_change_order(co_id, approved_amount=2500000, approved_time=120).",
+        "4. get_summary reports total_approved=2500000, revised_contract=3500000."
+      ],
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:15-26",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:123-124",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:274-288",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:302-310",
+        "4_DDC_Curated/Contract-Legal/change-order-manager/SKILL.md:341"
+      ],
+      "remediation": "Require SUBMITTED/UNDER_REVIEW and non-empty backup/photo evidence before APPROVED. Cap approved_amount against proposed pricing; dual-control approver.",
+      "verified": true,
+      "poc": "DRAFT→APPROVED $2.5M; photos=[]; backup=[]; revised_contract=$3.5M"
+    },
+    {
+      "severity": "high",
+      "location": "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md",
+      "title": "can_release_payment authorizes on RECEIVED/VERIFIED waivers with empty file_path; verify skips RECEIVED",
+      "description": "LienWaiverTracker is the payment-release gate (description: ensure waivers before payments; can_release_payment returns can_release + amount). receive_waiver() accepts file_path=\"\" and stamps RECEIVED. can_release_payment treats RECEIVED or VERIFIED as sufficient and returns can_release=True with reason 'All waivers verified' even when never verified and file_path is empty. verify_waiver() also jumps REQUESTED→VERIFIED with no file. Distinct from toolkit subcontractor-payment-tracker (separate skill).",
+      "impact": "Subcontractor progress payment releases against a phantom waiver. Lien exposure and owner payment controls treat missing PDFs as verified.",
+      "attack_path": [
+        "1. Deploy LienWaiverTracker; create_payment_application auto-requests conditional waiver.",
+        "2. Attacker receive_waiver(id, file_path='') or verify_waiver(id, 'forger') without a file.",
+        "3. can_release_payment → can_release=True and amount=approved net.",
+        "4. AP releases funds; exposure math assumes waivers exist."
+      ],
+      "evidence": [
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:177-203",
+        "4_DDC_Curated/Contract-Legal/lien-waiver-tracker/SKILL.md:340-364"
+      ],
+      "remediation": "Require non-empty file_path and VERIFIED (not mere RECEIVED) before can_release=True. Block verify_waiver unless RECEIVED with a stored file.",
+      "verified": true,
+      "poc": "empty file RECEIVED → can_release True $90k; REQUESTED→VERIFIED skip file → can_release True $45k"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md",
+      "title": "record_payment sets PAID without APPROVED, lien waiver, or insurance; uncapped vs contract",
+      "description": "SubcontractorPaymentTracker is the live sub payment register (export_report / get_summary / get_missing_waivers). record_payment() writes PAID from INVOICED with no APPROVED gate and no lien_waiver check. insurance_expiry and license_number are stored on Subcontractor but never consulted. Invoices can exceed contract_amount. get_missing_waivers only reports AFTER PAID—advisory, not a gate. Quick Start itself pays before attaching a waiver.",
+      "impact": "Pay $810k against a $500k steel contract with null insurance and no waivers; missing_waivers=2 only after cash has left. Lien and insurance compliance are post-facto.",
+      "attack_path": [
+        "1. Deploy tracker as payment SoR.",
+        "2. record_invoice large amounts; skip approve_payment.",
+        "3. record_payment → PAID; insurance_expiry remains None; lien_waiver None.",
+        "4. export_report / total_paid used for AP and owner draws."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:84",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:149-184",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:203-214",
+        "1_DDC_Toolkit/Cost-Management/subcontractor-payment-tracker/SKILL.md:261-267"
+      ],
+      "remediation": "Allow PAID only from APPROVED with a stored waiver and non-expired insurance_expiry. Cap cumulative paid+retention at contract_amount.",
+      "verified": true,
+      "poc": "two invoices → PAID $810k on $500k contract; waiver=None; insurance=None; missing_waivers=2"
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/site-logistics-optimization/SKILL.md",
+      "title": "_find_available_crane ignores Equipment.capacity and schedule; assigns 5t crane to 40t steel",
+      "description": "DeliveryScheduler is the site JIT/crane assignment engine (Quick Start / get_daily_schedule). Equipment.capacity (tons) is defined but _find_available_crane only checks equipment_type=='crane' and check_crane_coverage (max_reach). Comment admits schedule is unchecked. schedule_deliveries therefore assigns a 5-ton crane to a 40-ton structural delivery and can double-book the same crane on overlapping unload windows.",
+      "impact": "Official lift plan dispatches an under-capacity crane for structural steel—dropped-load / tip-over path on assigned_crane.",
+      "attack_path": [
+        "1. Operator deploys SiteLogisticsModel + DeliveryScheduler for crane-required deliveries.",
+        "2. Fleet has CR1 capacity=5t within reach of laydown zone.",
+        "3. DeliveryRequest quantity=40 tons requires_crane=True.",
+        "4. schedule_deliveries assigns assigned_crane='CR1'; second 35t delivery also gets CR1."
+      ],
+      "evidence": [
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:138",
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:199-208",
+        "5_DDC_Innovative/site-logistics-optimization/SKILL.md:349-362"
+      ],
+      "remediation": "Compare delivery.quantity (tons) to crane.capacity at radius; fail closed when over capacity. Track crane busy intervals and refuse overlaps.",
+      "verified": true,
+      "poc": "5t CR1 assigned to 40t and 35t steel deliveries same day"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/CWICR-Database/cwicr-material-substitution/SKILL.md",
+      "title": "Same-group substitutes hardcode similarity=0.7 so C40→C20 / S355→S235 enter batch savings as best_substitute",
+      "description": "CWICRMaterialSubstitution is the VE / cost-saving substitute engine (find_cost_saving_alternatives / batch_substitution / export_substitution_report). When materials share a MATERIAL_GROUPS keyword hit, similarity is hardcoded to 0.7 with no grade/strength check. batch_substitution auto-picks the cheapest as best_substitute. PoC: structural C40 → lean C20 ($25k 'savings' on 500 m³); S355 → S235 ($40k on 200 t).",
+      "impact": "Official VE report recommends structural downgrades as savings. Specs/GMP can lock in non-compliant concrete/steel.",
+      "attack_path": [
+        "1. Deploy CWICRMaterialSubstitution against project QTO.",
+        "2. batch_substitution on C40/S355 packages.",
+        "3. Report lists C20/S235 as best_substitute with potential_savings.",
+        "4. Procurement orders the cheaper grade."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/CWICR-Database/cwicr-material-substitution/SKILL.md:42-53",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-material-substitution/SKILL.md:151-188",
+        "1_DDC_Toolkit/CWICR-Database/cwicr-material-substitution/SKILL.md:279-290"
+      ],
+      "remediation": "Parse and compare strength grades; never hardcode group similarity. Exclude DOWNGRADE from batch best_substitute unless an engineer override flag is set.",
+      "verified": true,
+      "poc": "C40→C20 and S355→S235 selected; $65k total_potential_savings"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Field-Operations/safety-inspection/SKILL.md",
+      "title": "get_statistics counts created inspections as completed; CRITICAL hazards close without photos",
+      "description": "SafetyManager is the field safety SoR (generate_daily_safety_report / get_statistics). inspections_completed equals count of create_inspection records—no checklist completion required (PoC: all results None still counts 1). correct_hazard → verify_hazard_closure closes CRITICAL with photo_urls=[]. Failed checklist items only print a warning; hazards are optional.",
+      "impact": "Daily safety briefing and TRIR-adjacent dashboards show completed inspections and closed critical fall-protection hazards with zero evidence.",
+      "attack_path": [
+        "1. Deploy SafetyManager as site safety log.",
+        "2. create_inspection only; get_statistics.inspections_completed=1.",
+        "3. add_hazard CRITICAL; correct_hazard without photo; verify_hazard_closure.",
+        "4. Daily briefing omits the hazard from open lists."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Field-Operations/safety-inspection/SKILL.md:323-343",
+        "1_DDC_Toolkit/Field-Operations/safety-inspection/SKILL.md:346-364",
+        "1_DDC_Toolkit/Field-Operations/safety-inspection/SKILL.md:417-455"
+      ],
+      "remediation": "Count inspections only when every checklist item has a result. Require photo evidence before VERIFIED on CRITICAL/HIGH.",
+      "verified": true,
+      "poc": "inspections_completed=1 with checklist_done=False; CRITICAL → Verified Closed, photos=[]"
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/environmental-monitoring/SKILL.md",
+      "title": "generate_daily_report marks COMPLIANT with zero readings; record_batch swallows bad ingest",
+      "description": "EnvironmentalMonitor publishes DailyReport.compliance_status used as the regulatory compliance register. With stations configured but no readings, check_compliance returns [] and generate_daily_report else-branch sets COMPLIANT. record_batch bare except: pass drops poisoned/unknown-station rows, so exceedances never land and the day still reports compliant.",
+      "impact": "Dust/noise/vibration compliance packages show COMPLIANT on days with no monitoring data—regulatory false clearance for work continuation.",
+      "attack_path": [
+        "1. Deploy EnvironmentalMonitor; add_station for PM10/noise.",
+        "2. Skip readings (or feed bad station ids swallowed by record_batch).",
+        "3. generate_daily_report → compliance_status=compliant, readings_collected=0.",
+        "4. Daily environmental report / owner package uses that status."
+      ],
+      "evidence": [
+        "5_DDC_Innovative/environmental-monitoring/SKILL.md:225-239",
+        "5_DDC_Innovative/environmental-monitoring/SKILL.md:346-347",
+        "5_DDC_Innovative/environmental-monitoring/SKILL.md:432-463"
+      ],
+      "remediation": "Fail closed to NO_DATA/NON_COMPLIANT when required parameters have zero readings. Do not swallow record_batch exceptions; surface ingest failures.",
+      "verified": true,
+      "poc": "0 readings → compliant; bad batch swallowed count=0"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md",
+      "title": "update_status(DELIVERED) forges receipt without receive_delivery; storage capacity unused",
+      "description": "MaterialDeliveryTracker is the delivery schedule SoR (export_schedule / get_summary). update_status accepts any DeliveryStatus including DELIVERED without setting receiver, actual_date, or quantity_received. receive_delivery is the intended receipt path. StorageArea.capacity_sqm/current_usage_sqm are never updated on receipt. PoC: DELIVERED with receiver='', qty_received=0, actual_date=None.",
+      "impact": "Critical-path materials show delivered for look-ahead/OTD metrics while never received—false make-ready.",
+      "attack_path": [
+        "1. schedule_delivery + add_item for structural steel.",
+        "2. update_status(..., DELIVERED) skipping receive_delivery.",
+        "3. Summary/export treat delivery complete."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:124-125",
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:196-210",
+        "1_DDC_Toolkit/Cost-Management/material-delivery-tracker/SKILL.md:213-239"
+      ],
+      "remediation": "Allow DELIVERED only via receive_delivery with receiver and quantities. Enforce storage capacity on assign.",
+      "verified": true,
+      "poc": "status=delivered, receiver='', qty_recv=0, actual=None"
+    },
+    {
+      "severity": "high",
+      "location": "1_DDC_Toolkit/Procurement/material-procurement-tracker/SKILL.md",
+      "title": "update_status(DELIVERED) from REQUISITIONED with empty PO/vendor",
+      "description": "MaterialProcurementTracker is the long-lead procurement log (export_log / get_summary). update_status writes any ProcurementStatus and on DELIVERED stamps actual_delivery=today without requiring PO_ISSUED, vendor, or po_number. issue_po is skippable. Critical firestop can show delivered with po=''.",
+      "impact": "Life-safety / long-lead materials marked on-site without a purchase order—false schedule readiness and audit gap.",
+      "attack_path": [
+        "1. add_item CRITICAL firestop REQUISITIONED.",
+        "2. update_status(DELIVERED) without issue_po.",
+        "3. export_log shows Delivered with empty Vendor/PO."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/material-procurement-tracker/SKILL.md:96-110"
+      ],
+      "remediation": "Allow DELIVERED only from SHIPPED/IN_PRODUCTION after issue_po with non-empty vendor and po_number.",
+      "verified": true,
+      "poc": "REQUISITIONED→DELIVERED; po=''; vendor=''; actual=today"
+    },
+    {
+      "severity": "high",
+      "location": "5_DDC_Innovative/material-tracking-iot/SKILL.md",
+      "title": "RFID location substring 'zone'/'floor' forges MaterialStatus.IN_USE without delivery verification",
+      "description": "MaterialTrackingSystem + IoTMessageHandler is the live IoT inventory (get_inventory_report / dashboard). _process_rfid_reading sets IN_USE whenever new_location contains 'zone' or 'floor', regardless of prior DELIVERED/QC. process_message has no auth on MQTT payloads. PoC: ORDERED firestop + RFID at 'Building A Zone 5' → status=in_use.",
+      "impact": "Unverified / un-received life-safety materials appear installed in inventory dashboards; MQTT spoof can move status.",
+      "attack_path": [
+        "1. Deploy MaterialTrackingSystem; register material ORDERED with RFID.",
+        "2. Spoof or scan RFID at a location string containing 'zone'.",
+        "3. Status becomes IN_USE; inventory report reflects installed."
+      ],
+      "evidence": [
+        "5_DDC_Innovative/material-tracking-iot/SKILL.md:218-256",
+        "5_DDC_Innovative/material-tracking-iot/SKILL.md:702"
+      ],
+      "remediation": "Require DELIVERED (and QC pass) before IN_USE. Authenticate MQTT ingest; do not key status off location substrings alone.",
+      "verified": true,
+      "poc": "ORDERED→in_use at Building A Zone 5"
+    }
+  ],
+  "near_misses_discarded": [
+    {
+      "item": "permit-tracking / safety-compliance / warranty / incident / compliance-tracker / punch-list / prequal EMR / digital-twin websocket / weather max_wind",
+      "reason": "Already reported or discarded in flagged-69/70/71 and prior PRs."
+    },
+    {
+      "item": "telegram-field-bot no allowlist",
+      "reason": "Same class as already-reported voice-to-report / n8n-pto Telegram allowlist gaps; not re-filed."
+    },
+    {
+      "item": "sql-query-builder string-concat SQLi / price-api weather-api",
+      "reason": "Book chapter educational builders; SQLi confirmed in WhereCondition.to_sql but framed as query-string generator without a live executor in-skill. price/weather APIs take operator keys and public endpoints—no new SSRF/authz chain beyond documented client usage."
+    },
+    {
+      "item": "capacity-planning can_pursue_project",
+      "reason": "Fails closed when capacity insufficient; no authorize-work boolean forge."
+    },
+    {
+      "item": "cwicr-equipment-planner unknown-code omit / default rates",
+      "reason": "Same soft fail-open class as already-reported cwicr-labor-scheduler / crew-optimizer norms; weaker new chain."
+    },
+    {
+      "item": "energy-simulation",
+      "reason": "Calculation-only; no control-system authorizing gate."
+    }
+  ],
+  "slack": "SendSlackMessage tool unavailable in this run",
+  "open_git_pr": "OpenGitPr tool unavailable; findings committed on main per cloud branch instructions"
+}
