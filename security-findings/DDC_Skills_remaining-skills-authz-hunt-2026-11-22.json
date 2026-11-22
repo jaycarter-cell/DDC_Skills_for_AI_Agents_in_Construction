@@ -1,0 +1,137 @@
+{
+  "hunt": "remaining-skills-business-logic-authz-2026-11-22",
+  "date": "2026-11-22",
+  "scope": "Remaining skills list (as-built-documentation, warranty, compliance, incident, safety-compliance-checker, contractor-matching, BIM/Analytics/CWICR/Procurement/Schedule/Sustainability/Innovative/Book/Insights/Curated leftovers). Skipped already-reported set from prompt.",
+  "result": "1 CRITICAL + 4 HIGH (top 5) + 2 MEDIUM bonus",
+  "poc": "security-findings/poc_remaining_skills_authz_hunt_2026-11-22.py",
+  "findings": [
+    {
+      "rank": 1,
+      "severity": "critical",
+      "skill_path": "3_DDC_Insights/Safety-Quality/compliance-tracker/SKILL.md",
+      "title": "update_status stamps CRITICAL permits/insurance ACTIVE (or NOT_APPLICABLE) with empty docs → critical_missing=0 and 100% compliance_rate",
+      "functions": [
+        "ComplianceTracker.update_status (L183-205)",
+        "ComplianceTracker.get_compliance_summary (L255-291)",
+        "ComplianceTracker.check_all_status skips NOT_APPLICABLE (L214)"
+      ],
+      "attack_chain": {
+        "who": "Colluding contractor + PM with API access",
+        "controls": "item_id, ComplianceStatus, optional empty document_url/reference_number",
+        "sink": "get_compliance_summary.critical_missing only counts PENDING/EXPIRED; ACTIVE and NOT_APPLICABLE clear the work-stoppage gate (Priority.CRITICAL comment L59)",
+        "gain": "Official compliance report shows work authorized (building permit/insurance) without issued documents; project proceeds / owner dashboard green"
+      },
+      "not_stub": "Full ComplianceTracker with enums, alerts, Excel/report generation, and CRITICAL=work-stoppage semantics; used as system of record for regulatory gates",
+      "not_duplicate": "Not permit DRAFT→ISSUED (different skill/functions). Prior soft near-miss undervalued NOT_APPLICABLE + empty-doc ACTIVE clearing critical_missing",
+      "verified": true
+    },
+    {
+      "rank": 2,
+      "severity": "high",
+      "skill_path": "5_DDC_Innovative/resource-pool-optimizer/SKILL.md",
+      "title": "_get_availability aggregates overlapping allocations with max() instead of sum() → overbooks shared crane/crew beyond capacity",
+      "functions": [
+        "ResourcePoolOptimizer._get_availability (L199-215)",
+        "ResourcePoolOptimizer.allocate (L217-252)",
+        "ResourcePoolOptimizer.auto_allocate (L254+)"
+      ],
+      "attack_chain": {
+        "who": "Colluding PMs scheduling multiple projects against one shared crane/crew pool",
+        "controls": "ResourceRequest quantity/dates via add_request + allocate/auto_allocate",
+        "sink": "allocated = max(allocated, alloc.quantity) undercounts concurrent demand; allocate() believes capacity remains",
+        "gain": "Official ALLOCATED status for 1.2+ of capacity-1.0 crane → unsafe concurrent lifts / ghost capacity on portfolio schedule"
+      },
+      "not_stub": "Production-style pool with conflict detection, utilization reports, and auto_allocate used for live resource decisions",
+      "not_duplicate": "Not crane capacity ignore (site-logistics unused Equipment.capacity). This is a concurrent overbook arithmetic bug in a different skill",
+      "verified": true
+    },
+    {
+      "rank": 3,
+      "severity": "high",
+      "skill_path": "1_DDC_Toolkit/Schedule-Integration/schedule-cost-link/SKILL.md",
+      "title": "Attacker-controlled percent_complete flows into calculate_earned_value BCWP / export without progress verification",
+      "functions": [
+        "ScheduleCostLinker.add_activity (L94-111)",
+        "ScheduleCostLinker.generate_cost_loaded_schedule (L193-213)",
+        "ScheduleCostLinker.calculate_earned_value (L271-327)",
+        "ScheduleCostLinker.export_to_excel (uses EVM)"
+      ],
+      "attack_chain": {
+        "who": "Colluding PM / contractor reporting progress",
+        "controls": "percent_complete on add_activity (or mutating ScheduleActivity.percent_complete)",
+        "sink": "bcwp += budgeted_cost * percent_complete / 100 → SPI/CPI/EAC; Excel export BCWP(EV)",
+        "gain": "Forge earned value (e.g. 10%→100% on $1M = $900k overbill basis) driving pay apps / owner progress payments"
+      },
+      "not_stub": "Full cost-loaded schedule + cash flow + EVM export marketed as project controls system of record",
+      "not_duplicate": "Not pay-app processor overbill+unapproved CO. This forges the EV inputs those payment systems consume",
+      "verified": true
+    },
+    {
+      "rank": 4,
+      "severity": "high",
+      "skill_path": "5_DDC_Innovative/contractor-matching-ai/SKILL.md",
+      "title": "_filter_eligible treats missing cert/license valid_until as date.max; self-reported incident_rate/insurance drive award scores",
+      "functions": [
+        "ContractorMatchingEngine.register_contractor (L279-281)",
+        "ContractorMatchingEngine._filter_eligible (L307-351)",
+        "valid_until default date.max (L331, L337)",
+        "ContractorProfile.calculate_safety_score (L216-232)",
+        "ContractorMatchingEngine.find_matches / BidEvaluator.evaluate_bids"
+      ],
+      "attack_chain": {
+        "who": "Colluding contractor registering their own profile",
+        "controls": "certifications/licenses without valid_until (or far-future), incident_rate=0, insurance_coverage inflated, forged references",
+        "sink": "Eligibility filter accepts eternal certs; safety/financial scores inflate; find_matches / recommendation report ranks attacker #1",
+        "gain": "Official award recommendation / bid evaluation favors unqualified or expired-cert contractor"
+      },
+      "not_stub": "Full matching engine with eligibility gates, weighted scoring, bid evaluation, Excel recommendation report",
+      "not_duplicate": "Not prequal EMR QUALIFIED status jump. Mechanism is expiry fail-open + self-attested scores in contractor-matching-ai",
+      "verified": true
+    },
+    {
+      "rank": 5,
+      "severity": "high",
+      "skill_path": "5_DDC_Innovative/safety-compliance-checker/SKILL.md",
+      "title": "check_ppe_compliance: attacker-controlled required_ppe=[] yields COMPLIANT with zero actual PPE; check_work_activity trusts self-attested permits/PPE/fire_watch",
+      "functions": [
+        "check_ppe_compliance (L48-73)",
+        "SafetyComplianceEngine.check_work_activity (L221-317)",
+        "SiteInspectionManager.conduct_inspection (L514-559)"
+      ],
+      "attack_chain": {
+        "who": "Contractor submitting worker/activity payloads to automated safety gate",
+        "controls": "workers[].required_ppe=[], workers[].ppe=['helmet','harness'], activity.permits/fire_watch/atmospheric_test booleans",
+        "sink": "COMPLIANT ComplianceCheck records / inspection overall_score used as work-authorization evidence",
+        "gain": "Official COMPLIANT PPE/hot-work/confined-space/fall-protection status without real controls → unsafe work proceeds"
+      },
+      "not_stub": "OSHA-referenced rules engine producing ComplianceCheck + SiteInspection scores and dashboard metrics",
+      "not_duplicate": "Not Field-Ops safety-inspection stats forge (created=completed KPI). This forges COMPLIANT via empty required set / self-attest in a different skill",
+      "verified": true
+    }
+  ],
+  "bonus_medium": [
+    {
+      "severity": "medium",
+      "skill_path": "1_DDC_Toolkit/Sustainability/carbon-calculator/SKILL.md",
+      "title": "add_custom_factor(ec_factor=0) overrides standards → generate_report understates embodied carbon to 0",
+      "functions": ["add_custom_factor (L125-140)", "get_factor prefers custom (L142-151)", "calculate (L169-209)"]
+    },
+    {
+      "severity": "medium",
+      "skill_path": "1_DDC_Toolkit/CWICR-Database/cwicr-data-validator/SKILL.md",
+      "title": "validate_dataframe skips REQUIRED_FIELDS when columns absent → passed=True on incomplete imports",
+      "functions": ["_validate_row `if field in row.index` (L160-172)", "validate_dataframe passed=error_count==0 (L139-151)"]
+    }
+  ],
+  "discarded_near_misses": [
+    "as-built-documentation verify_document→FINAL empty file: sibling of as-built-tracker.review_submission",
+    "material-tracker update_order_status(DELIVERED): sibling of delivery/procurement DELIVERED",
+    "schedule-delay-analyzer EXCUSABLE_COMPENSABLE self-classify: sibling of delay EOT",
+    "normalize_units unknown→keep raw: sibling of quantity-matcher 1.0 conversion",
+    "image-to-data zero workers→compliant: sibling of environmental COMPLIANT zero readings",
+    "energy-simulation empty envelope→compliant: soft empty-pass / IDS-adjacent",
+    "warranty update_claim_status DRAFT→RESOLVED cost forge: strong but adjacent to claims settle; held as near-miss vs top5 uniqueness bar",
+    "progress-photo metadata-driven simulated detections: stub/demo CV",
+    "n8n-workflow executeCommand / telegram PTO status: already-reported n8n/telegram classes"
+  ]
+}
