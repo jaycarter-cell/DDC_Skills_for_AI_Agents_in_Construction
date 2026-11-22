@@ -1,9 +1,11 @@
 {
   "hunt": "remaining-skills-business-logic-authz-2026-11-22",
   "date": "2026-11-22",
+  "commit": "cfdfbf7",
   "scope": "Remaining skills list (as-built-documentation, warranty, compliance, incident, safety-compliance-checker, contractor-matching, BIM/Analytics/CWICR/Procurement/Schedule/Sustainability/Innovative/Book/Insights/Curated leftovers). Skipped already-reported set from prompt.",
   "result": "1 CRITICAL + 4 HIGH (top 5) + 2 MEDIUM bonus",
   "poc": "security-findings/poc_remaining_skills_authz_hunt_2026-11-22.py",
+  "run": "https://cursor.com/agents/bc-ab05aa63-c137-4259-bf13-6900671660da",
   "findings": [
     {
       "rank": 1,
