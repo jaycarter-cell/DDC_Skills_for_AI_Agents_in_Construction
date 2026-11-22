@@ -1,0 +1,173 @@
+{
+  "hunt": "1_DDC_Toolkit leftover skills business-logic / injection (20 near-miss leftovers)",
+  "date": "2026-10-06",
+  "branch": "cursor/at-rest-security-review-406d",
+  "repo": "jaycarter-cell/DDC_Skills_for_AI_Agents_in_Construction",
+  "scope": [
+    "Document-Control/meeting-minutes-generator",
+    "Document-Control/contract-clause-analyzer",
+    "Resource-Management/labor-productivity-analyzer",
+    "Schedule-Integration/weather-impact-scheduler",
+    "Schedule-Management/critical-path-analyzer",
+    "Schedule-Management/bim-to-schedule-4d",
+    "Schedule-Integration/bim-to-schedule-4d",
+    "Analytics/project-kpi-dashboard",
+    "Analytics/daily-progress-report",
+    "Analytics/productivity-analyzer",
+    "Procurement/subcontractor-prequalification",
+    "Procurement/material-tracker",
+    "Procurement/material-procurement-tracker",
+    "BIM-Visualization/nobim-image-generator",
+    "Sustainability/carbon-calculator",
+    "BIM-Analysis/bim-clash-detection",
+    "BIM-Analysis/bim-classification-ai",
+    "BIM-Analysis/bim-validation-report",
+    "Kaggle-Notebooks/5000-projects-analysis",
+    "Field-Operations/daily-report-generator"
+  ],
+  "summary": {"critical": 0, "high": 4, "medium": 1, "total": 5},
+  "artifact": "/opt/cursor/artifacts/DDC_Skills_toolkit-leftover-logic-hunt-2026-10-06.json",
+  "poc": "security-findings/poc_toolkit_leftover_logic_hunt_2026-10-06.py",
+  "poc_result": "6 passed, 0 failed",
+  "skipped_already_described": [
+    "material-delivery-tracker forge DELIVERED (TK-10) — material-tracker.update_order_status/record_delivery DRAFT→DELIVERED treated as sibling near-miss",
+    "Insights critical-path-analyzer zero/negative duration — Toolkit CPA same pattern, not re-filed",
+    "bid-analysis unbounded scores — subcontractor raw score inflation not filed as standalone; EMR/docs gate miss filed separately",
+    "weather SSRF fixed host — daily-report-generator OpenWeatherMap + weather-impact-scheduler have no remote URL"
+  ],
+  "findings": [
+    {
+      "id": "TK-L01",
+      "severity": "HIGH",
+      "location": "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md",
+      "title": "consume_material accepts negative quantity and inflates inventory",
+      "description": "consume_material only rejects when current_stock < quantity. A negative quantity always passes that check (stock is never less than a negative number) and then executes current_stock -= quantity, which adds |quantity| to on-hand stock. No lower bound or absolute-value guard exists.",
+      "impact": "Attacker-controlled consume quantity creates phantom inventory. False stock hides stockouts, suppresses reorder alerts (get_low_stock_items), and can back false material-availability claims used for schedule progress or billing.",
+      "attack_path": [
+        "1. Seed or observe inventory with legitimate stock (e.g. 100 tons).",
+        "2. Call consume_material(material_code, quantity=-500) with attacker-controlled quantity.",
+        "3. Guard current_stock < quantity evaluates 100 < -500 → False, so the write proceeds.",
+        "4. Stock becomes 600; low-stock/reorder reports and downstream consumers trust inflated on-hand."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md:205-220"
+      ],
+      "remediation": "Reject quantity <= 0. Require quantity <= current_stock using an explicit positive-quantity check before mutating stock. Log consumption with signed audit fields."
+    },
+    {
+      "id": "TK-L02",
+      "severity": "HIGH",
+      "location": "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md",
+      "title": "create_order silently overwrites existing order_id including DELIVERED POs",
+      "description": "create_order writes self.orders[order_id] = order with no existence check. Reusing an order_id replaces a CONFIRMED/DELIVERED purchase order (including delivered_qty, total_cost, supplier, status) with a fresh DRAFT at attacker-chosen quantity/unit_cost. Prior Delivery records remain orphaned.",
+      "impact": "Financial/audit fraud: wipe a completed high-value PO, replace with a $1 DRAFT under an attacker supplier, erase delivered quantities from the order ledger while historical deliveries still reference the ID.",
+      "attack_path": [
+        "1. Legitimate flow creates PO-001, confirms it, and records full delivery (status=DELIVERED, total_cost large).",
+        "2. Attacker calls create_order(order_id='PO-001', quantity=1, unit_cost=1, supplier='Attacker').",
+        "3. Dict assignment overwrites the MaterialOrder object with no conflict error.",
+        "4. Order ledger now shows DRAFT/$1/Attacker; cost summaries and status reports no longer reflect the real delivered PO."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/material-tracker/SKILL.md:102-133"
+      ],
+      "remediation": "Refuse create_order when order_id already exists (or allocate server-side IDs). Separately, never allow mutation of terminal statuses (DELIVERED/CANCELLED) without an audited amendment workflow."
+    },
+    {
+      "id": "TK-L03",
+      "severity": "HIGH",
+      "location": "1_DDC_Toolkit/Procurement/material-procurement-tracker/SKILL.md",
+      "title": "issue_po skips RFQ/quote gates and accepts unbounded/negative re-issuance",
+      "description": "issue_po sets status=PO_ISSUED from any prior state (including REQUISITIONED), accepts any float amount (including negative), and can be called again to overwrite vendor/po_number/po_amount. get_summary() totals po_amount directly into total_po_value.",
+      "impact": "Procurement commitment fraud: fabricate or inflate PO commitments without quotes, or re-issue a legitimate PO to a negative/attacker amount that zeros or reverses reported PO value used for budget and payables.",
+      "attack_path": [
+        "1. Item exists in REQUISITIONED (no RFQ/QUOTED).",
+        "2. Call issue_po(..., amount=9999999) → status jumps to PO_ISSUED; summary total_po_value inflates.",
+        "3. Optionally call issue_po again with amount=-450000 and attacker vendor.",
+        "4. total_po_value becomes negative / retargeted; downstream commitment reports are falsified."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/material-procurement-tracker/SKILL.md:96-105",
+        "1_DDC_Toolkit/Procurement/material-procurement-tracker/SKILL.md:124-137"
+      ],
+      "remediation": "Allow issue_po only from QUOTED (or equivalent). Require amount > 0 and optionally amount within quote tolerance. Disallow re-issue without cancel/amend; keep immutable PO history."
+    },
+    {
+      "id": "TK-L04",
+      "severity": "HIGH",
+      "location": "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md",
+      "title": "QUALIFIED ignores EMR and documents_received safety gates",
+      "description": "_evaluate_qualification stamps QUALIFIED when per-criterion mins and raw total_score >= 60 pass. It never consults emr_rate (Experience Modification Rate) collected at application time, never requires documents_received (insurance/bonding evidence), and never applies criteria.weight. A contractor with catastrophic EMR and empty document list still becomes QUALIFIED.",
+      "impact": "Safety/procurement bypass: dangerous subcontractors enter the qualified register and get_qualified() results used for award decisions, without EMR or insurance/bonding proof.",
+      "attack_path": [
+        "1. add_application(..., emr_rate=5.0) with documents_received left empty.",
+        "2. score_application with values that meet each min_score and sum to >= 60.",
+        "3. _evaluate_qualification sets status=QUALIFIED without EMR or document checks.",
+        "4. get_qualified(trade) returns the unsafe contractor for award/shortlist use."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:43-47",
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:91-111",
+        "1_DDC_Toolkit/Procurement/subcontractor-prequalification/SKILL.md:113-119"
+      ],
+      "remediation": "Hard-fail QUALIFIED when emr_rate exceeds a configured threshold or documents_received lacks required artifacts (insurance, bonding). Apply weights; clamp scores to [0, max_score]."
+    },
+    {
+      "id": "TK-L05",
+      "severity": "MEDIUM",
+      "location": "1_DDC_Toolkit/BIM-Analysis/bim-clash-detection/SKILL.md",
+      "title": "resolve_clash forges RESOLVED on CRITICAL hard clashes with only a free-text note",
+      "description": "resolve_clash sets status=RESOLVED and resolved_at for any clash_id with no severity gate, no prior ACTIVE/assignment requirement, no evidence attachment, and no APPROVED transition. A CRITICAL hard MEP-vs-structure clash in NEW can be cleared with notes='looks fine'.",
+      "impact": "Coordination/safety underreporting: critical geometric conflicts disappear from open-clash summaries, enabling construction sequencing decisions on a falsely clean clash report.",
+      "attack_path": [
+        "1. run_clash_detection produces CRITICAL HARD clashes (status=NEW).",
+        "2. Attacker calls resolve_clash(clash_id, 'looks fine') with no design change.",
+        "3. Clash status becomes RESOLVED; get_summary by_status no longer counts it as open.",
+        "4. Exported clash report shows critical conflicts cleared without remediation evidence."
+      ],
+      "evidence": [
+        "1_DDC_Toolkit/BIM-Analysis/bim-clash-detection/SKILL.md:46-52",
+        "1_DDC_Toolkit/BIM-Analysis/bim-clash-detection/SKILL.md:336-343",
+        "1_DDC_Toolkit/BIM-Analysis/bim-clash-detection/SKILL.md:304-330"
+      ],
+      "remediation": "Require ACTIVE assignment, remediation evidence/model revision reference, and a separate APPROVED step by a coordinator role before CRITICAL/HARD clashes leave the open set. Disallow NEW→RESOLVED."
+    }
+  ],
+  "near_misses": [
+    {
+      "skill": "material-tracker",
+      "why": "update_order_status → DELIVERED and record_delivery from DRAFT with unbounded qty are siblings of excluded material-delivery-tracker forge DELIVERED / TK-10; not re-filed"
+    },
+    {
+      "skill": "material-procurement-tracker",
+      "why": "update_status(REQUISITIONED→DELIVERED) is the same excluded DELIVERED-forge class; issue_po amount abuse filed instead"
+    },
+    {
+      "skill": "subcontractor-prequalification",
+      "why": "Pure unbounded score>max_score alone matches excluded bid-analysis unbounded scores; filed only the EMR/documents gate miss"
+    },
+    {
+      "skill": "Schedule-Management/critical-path-analyzer",
+      "why": "Zero/negative duration collapses path — excluded Insights CPA sibling; topological cycle silent wrongness is schedule-quality not financial/safety stamp"
+    },
+    {
+      "skill": "weather-impact-scheduler / daily-report-generator",
+      "why": "No attacker-controlled URL; OpenWeatherMap host is fixed (excluded weather SSRF class). Hardcoded safety incidents=0 in generate_daily_report wrapper is always-on defect, not input-driven attack chain"
+    },
+    {
+      "skill": "carbon-calculator",
+      "why": "add_custom_factor(ec_factor=0) understates emissions — calculator override without compliance stamp/workflow; below MEDIUM+ bar"
+    },
+    {
+      "skill": "project-kpi-dashboard / productivity-analyzer / labor-productivity-analyzer / daily-progress-report",
+      "why": "Caller-supplied metrics/qty drive badges (SPI/CPI/EXCELLENT/COMPLETED); pure calculators without forged approval/payment/safety terminal states"
+    },
+    {
+      "skill": "meeting-minutes-generator / contract-clause-analyzer",
+      "why": "Decision/action text and NLP risk tags are documentation/analysis only; no money/safety status machine"
+    },
+    {
+      "skill": "bim-to-schedule-4d (both) / nobim-image-generator / bim-classification-ai / bim-validation-report / 5000-projects-analysis",
+      "why": "Linking/visualization/classification/validation helpers; export output_path operator-controlled without remote trigger; no financial/safety forge chain"
+    }
+  ]
+}
