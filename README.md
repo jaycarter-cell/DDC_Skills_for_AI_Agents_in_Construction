@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Skills-221-blue?style=flat-square" alt="Skills">
-  <img src="https://img.shields.io/badge/Categories-5-green?style=flat-square" alt="Categories">
+  <img src="https://img.shields.io/badge/Skills-238-blue?style=flat-square" alt="Skills">
+  <img src="https://img.shields.io/badge/Categories-6-green?style=flat-square" alt="Categories">
   <img src="https://img.shields.io/badge/Book_Languages-31-orange?style=flat-square" alt="Languages">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
 </p>
@@ -26,7 +26,7 @@
 
 ## What is this?
 
-A collection of **221 skills** for automating construction company processes with AI coding assistants.
+A collection of **238 skills** for automating construction company processes with AI coding assistants.
 
 ### What is a "Skill"?
 
@@ -44,15 +44,16 @@ Skills are organized by source and complexity level:
 | **2_DDC_Book** | Skills mapped to book chapters: data evolution, types, estimation, ML | 67 | You want to follow a structured learning path |
 | **3_DDC_Insights** | Practical workflows: n8n automation, AI agents, field tools | 20 | You need workflow automation |
 | **4_DDC_Curated** | Document generation (PDF, Excel, DOCX, PPTX), quality checks | 20 | You need document or report templates |
-| **5_DDC_Innovative** | Advanced: computer vision, IoT, digital twins, risk assessment | 29 | You're ready for AI/ML experimentation |
+| **5_DDC_Innovative** | Advanced: computer vision, IoT, digital twins, risk assessment, AI agents, ESG, EU AI Act, circular construction, generative design | 34 | You're ready for AI/ML experimentation |
+| **6_OpenConstructionERP** | Work with the OpenConstructionERP platform: load cost bases, BOQ & estimating, BIM takeoff, 4D/5D, cost browser, MCP, field ops, tendering, validation, geo/coordination, property development | 12 | You build on the open-source construction ERP |
 
 ```mermaid
 mindmap
-  root((DDC Skills<br/>221 skills))
+  root((DDC Skills<br/>238 skills))
     1_DDC_Toolkit
       CWICR Database
-        55,719 work items
-        31 languages
+        8 national bases
+        30 markets · 26 languages
       CAD Converters
         RVT → Excel
         IFC → Excel
@@ -84,6 +85,23 @@ mindmap
       IoT & Sensors
       Advanced BIM
         Digital Twin
+      AI Agent Orchestration
+      Embodied Carbon & ESG
+      EU AI Act
+      Material Passports
+      Generative Design
+    6_OpenConstructionERP
+      Load Cost Bases
+        TR · ZH · BR · ES · IT
+        VN · ID · GR · 30 markets
+      BOQ & Estimating
+      BIM & CAD Takeoff
+      4D/5D Scheduling
+      Cost Browser
+      MCP Integration
+      Field Ops · Tendering
+      Validation · Geo Hub
+      Property Development
 ```
 
 ---
@@ -114,7 +132,7 @@ Examples of common problems and which skills address them:
 
 | Your problem | What the skill does | Skill to run | Folder |
 |--------------|---------------------|--------------|--------|
-| Searching for work item rates takes too long | Semantic search across 55,719 items in 31 languages | `semantic-search-cwicr` | `1_DDC_Toolkit/` |
+| Searching for work item rates takes too long | Semantic search across 78,228 national + 55,719 global items in 26 languages | `semantic-search-cwicr` | `1_DDC_Toolkit/` |
 | Estimators spend days building estimates manually | Generates estimates from historical data and templates | `estimate-builder` | `1_DDC_Toolkit/` |
 | BIM models contain data but it's locked in RVT/IFC files | Extracts quantities and properties to Excel | `ifc-to-excel`, `rvt-to-excel` | `1_DDC_Toolkit/` |
 | Daily/weekly reports take hours to compile | Automated data collection and report generation | `n8n-daily-report` | `3_DDC_Insights/` |
@@ -344,7 +362,7 @@ Construction data comes in three forms. Each requires a different processing app
 DDC_Skills/
 │
 ├── 1_DDC_Toolkit/              ← Production tools (85 skills)
-│   ├── CWICR-Database/         ← 55,719 work items database
+│   ├── CWICR-Database/         ← 8 national bases + 30 markets database
 │   ├── CAD-Converters/         ← Revit/IFC/DWG → Excel
 │   └── ...
 │
@@ -461,7 +479,7 @@ If you find these tools useful, please give the repository a star — it helps o
 
 | Repository | Description |
 |------------|-------------|
-| [OpenConstructionEstimate-DDC-CWICR](https://github.com/datadrivenconstruction/OpenConstructionEstimate-DDC-CWICR) | 55,719 work items database in 31 languages |
+| [OpenConstructionEstimate-DDC-CWICR](https://github.com/datadrivenconstruction/OpenConstructionEstimate-DDC-CWICR) | 8 national bases + 30 markets in 26 languages |
 | [cad2data Pipeline](https://github.com/datadrivenconstruction/cad2data-Revit-IFC-DWG-DGN-pipeline-with-conversion-validation-qto) | Revit/IFC/DWG/DGN to Excel converter |
 
 ---
@@ -479,7 +497,7 @@ Each skill should include a `SKILL.md` with clear instructions and working code 
 
 ## License
 
-- **CWICR Database**: CC BY 4.0
+- **CWICR Database**: CC BY-NC 4.0 (non-commercial; separate DDC commercial license)
 - **DDC Tools**: MIT License
 - **Skills**: MIT License
 
